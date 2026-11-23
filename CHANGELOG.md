@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.3.0
+
+**New**
+
+- **Try in game.** A tool in StarterPack that plays an animation and its linked effects when you click it (with
+  hit-stop and camera shake). Press Play, equip it and click to see how it really looks. It holds a weapon:
+  - the one attached to the preview rig (**Anim > Try in game**, or **Try in game** on a finished job);
+  - or the selected weapon (**Models > Try with animation**, which plays the last animation you played).
+
+  It plays in Studio play tests without publishing. For a live game, put the published animation id in the tool's
+  `AnimationId` attribute.
+- **Video animations have Hit markers.** The frames where a hand or foot moves fast and then stops sharply (a punch,
+  a kick or a slash landing) get a `Hit` marker. Effects, hit-stop and damage line up with the clip's real contact.
+- **Effects can attach to the weapon.** The new `Weapon` attach point puts an effect at the middle of the held
+  weapon's blade.
+- **Repeats:** "triple jump", "double slash", "jab x3" and "kick three times" repeat the move.
+- **Effect for a move:** an effect-only request that names a move ("dodge" with VFX chosen) makes that move's own
+  effect instead of a generic impact.
+
+**Fixed**
+
+- **Animation + VFX: the effect never played with the animation in Studio.** The plugin looked for saved effects
+  inside itself instead of in the place, so every preview of a saved effect by name failed silently. Now:
+  - **Anim > Play** plays the animation with its linked effects firing on their hits (with hit-stop);
+  - the preview after a build does the same;
+  - the Ability card fills in from the linked ability.
+- **Every animation made with an effect becomes an ability.** Before, a clip whose effect had no clear peak got no
+  ability at all.
+- **Plugin updates deleted saved abilities.** Refreshing the runtime after an update replaced the `Abilities` module
+  together with the abilities saved inside it. They are now moved into the new copy.
+- Studio previews of saved abilities and cutscenes by name (plugin side) failed the same way as effects.
+
 ## 1.2.1
 
 Fixes from bug testing, including requests from a real session.

@@ -369,13 +369,44 @@ class JobStore:
         job.name = result["name"]
         bits = []
         if result["animation"]:
-            bits.append(f"{len(result['animation']['keyTimes'])}-key animation")
+            hits = len([m for m in result["animation"].get("markers") or [] if m.get("name") == "Hit"])
+            bits.append(f"{len(result['animation']['keyTimes'])}-key animation"
+                        + (f" ({hits} hit{'s' if hits != 1 else ''})" if hits else ""))
         if result["vfx"]:
             bits.append(f"{result['vfx']['description']} VFX")
+        linked = self._link_ability(result, "Front")
         msg = "Made a " + " and a ".join(bits) if bits else "Nothing usable in this clip"
+        if linked:
+            msg += ", linked as an ability"
         if warnings:
             msg += " (" + "; ".join(warnings) + ")"
         self._finish(job, result, msg)
+
+    @staticmethod
+    def _link_ability(result: dict, attach: str = "Front") -> bool:
+        """An animation and an effect made together become an ability: the effect fires on the animation's Hit
+        markers (with hit-stop). A one-off effect (a black hole, an explosion) fires once, on the strongest moment:
+        the hit nearest the effect's own peak in a clip, else the last hit, through its own Fx marker. With no hit
+        markers, a clip's effect peak is used as a timed hit (marker "")."""
+        anim, vfx = result.get("animation"), result.get("vfx")
+        if not anim or not vfx:
+            return False
+        hits = [m["t"] for m in anim.get("markers") or [] if m.get("name") == "Hit"]
+        peak = ((vfx.get("analysis") or {}).get("timing") or {}).get("peak")
+        if not hits:
+            if peak is None:
+                return False
+            t = min(max(float(peak), 0.0), float(anim.get("duration") or peak))
+            result["ability"] = {"marker": "", "attach": attach, "at": [round(t, 3)]}
+            return True
+        base = vfx.get("base")
+        marker, at = "Hit", hits
+        if len(hits) > 1 and base not in PER_HIT_FX:
+            one = min(hits, key=lambda h: abs(h - float(peak))) if peak is not None else hits[-1]
+            marker, at = "Fx", [one]
+            anim["markers"] = anim["markers"] + [{"name": "Fx", "t": one}]
+        result["ability"] = {"marker": marker, "attach": attach, "at": at}
+        return True
 
     def _run_text(self, job: Job, result: dict, opts: dict, finish=None):
         """No video: words -> an animation from the move library and/or an effect (linked as an ability that fires the
@@ -402,7 +433,8 @@ class JobStore:
                 result["animation"] = anim
                 made.append(f"{_a(anim['description'].lower())} animation ({anim['duration']:.2f} s)")
         if plan["vfx"]:
-            vp = router.vfx_prompt_for(job.prompt, anim["moves"][0] if anim else None)
+            # an effect for a move ("dodge", with VFX chosen) is that move's own effect, not a generic impact
+            vp = router.vfx_prompt_for(job.prompt, anim["moves"][0] if anim else plan.get("move"))
             cfg = prompts.config_from_prompt(vp, (job.name + ("VFX" if anim else "")) if job.name else None)
             cfg["prompt"] = job.prompt
             result["vfx"] = cfg
@@ -412,14 +444,8 @@ class JobStore:
             base = result["vfx"].get("base")
             if attach in ("RightHand", "LeftHand") and base != fx and base not in PER_HIT_FX:
                 attach = "Front"  # a summoned black hole or an explosion goes out in front, not on the hand
-            hits = [m["t"] for m in anim["markers"] if m["name"] == "Hit"]
-            marker, at = "Hit", hits
-            if len(hits) > 1 and base not in PER_HIT_FX:
-                # a one-off effect ("clap then summon a black hole") fires once, on the last hit: its own marker
-                marker, at = "Fx", [hits[-1]]
-                anim["markers"] = anim["markers"] + [{"name": "Fx", "t": hits[-1]}]
-            result["ability"] = {"marker": marker, "attach": attach, "at": at}
-            made.append("linked as an ability")
+            if self._link_ability(result, attach):
+                made.append("linked as an ability")
         if not made:
             raise ValueError("Nothing to make from that. Name a move (punch, backflip, wave...) or an effect.")
         job.name = job.name or (anim["name"] if anim else result["vfx"]["name"])

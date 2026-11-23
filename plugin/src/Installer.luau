@@ -28,18 +28,45 @@ local function sourceOf(m: Instance): string
 	return (m :: any).Source
 end
 
--- Copies (or refreshes) the runtime modules into ReplicatedStorage.ClipForge. Effects already there are kept.
+-- Copies (or refreshes) the runtime modules into ReplicatedStorage.ClipForge. Effects already there are kept, and so
+-- is anything saved inside a runtime module: saved abilities live under the Abilities module (require(...).play finds
+-- them there), so refreshing it after a plugin update moves them into the new copy instead of deleting them.
 function Installer.ensureRuntime(): Folder
 	local rs = folder(ReplicatedStorage, "ClipForge")
 	for _, name in RUNTIME do
 		local src = pluginRoot:FindFirstChild(name)
-		local dst = rs:FindFirstChild(name)
+		local dst, strays = nil, {}
+		for _, c in rs:GetChildren() do
+			if c.Name == name then
+				if c:IsA("ModuleScript") and not dst then
+					dst = c
+				else
+					table.insert(strays, c) -- e.g. a Folder of the same name from an older version
+				end
+			end
+		end
 		if not dst or sourceOf(dst) ~= sourceOf(src) then
+			local fresh = src:Clone()
 			if dst then
+				for _, saved in dst:GetChildren() do
+					if not src:FindFirstChild(saved.Name) then
+						saved.Parent = fresh
+					end
+				end
 				dst:Destroy()
 			end
-			local c = src:Clone()
-			c.Parent = rs
+			fresh.Parent = rs
+			dst = fresh
+		end
+		for _, stray in strays do
+			for _, saved in stray:GetChildren() do
+				if not dst:FindFirstChild(saved.Name) then
+					saved.Parent = dst
+				end
+			end
+			if #stray:GetChildren() == 0 then
+				stray:Destroy()
+			end
 		end
 	end
 	local recipes = folder(rs, "Recipes")

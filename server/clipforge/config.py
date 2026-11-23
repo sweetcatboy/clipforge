@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import secrets
 
-VERSION = "1.2.1"
+VERSION = "1.3.0"
 SERVER_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Everything that must survive updates (Python env, pose model, jobs, bot token) lives in CLIPFORGE_HOME
 # (default %USERPROFILE%\.clipforge), not next to the code: a Claude Code plugin update replaces the code folder.

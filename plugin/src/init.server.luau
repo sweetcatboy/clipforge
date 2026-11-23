@@ -29,8 +29,9 @@ local TabLibrary = require(root.TabLibrary)
 local TabModels = require(root.TabModels)
 local TabScenes = require(root.TabScenes)
 local TabSettings = require(root.TabSettings)
+local TryTool = require(root.TryTool)
 
-local VERSION = "1.2.1"
+local VERSION = "1.3.0"
 
 -- settings ---------------------------------------------------------------------------------------------------------
 local function setting(key, default)
@@ -373,10 +374,89 @@ end
 
 -- forward declarations
 local refreshAnimations
+local fillAbilityCard -- set by the Animations tab: show a linked ability's effect, time and attach point
 local activityViews = {}
 local setStatus
 
 -- building finished jobs -------------------------------------------------------------------------------------------
+-- The ability saved for an animation (ReplicatedStorage.ClipForge.Abilities, `keyframes` = its name), freshly read.
+local function linkedAbility(kfs: Instance?)
+	local rs = game:GetService("ReplicatedStorage"):FindFirstChild("ClipForge")
+	local folder = rs and rs:FindFirstChild("Abilities")
+	if not (folder and kfs) then
+		return nil, nil
+	end
+	for _, m in folder:GetChildren() do
+		if m:IsA("ModuleScript") then
+			local ok, cfg = pcall(function()
+				return require(m:Clone()) -- a clone: edits to the module show up without restarting Studio
+			end)
+			if ok and type(cfg) == "table" and cfg.keyframes == kfs.Name then
+				return m, cfg
+			end
+		end
+	end
+	return nil, nil
+end
+
+-- Plays an animation on the rig with its ability's effects firing on their markers (or times), with hit-stop:
+-- what the game will show.
+local function previewWithAbility(rig: Model, kfs: KeyframeSequence, cfg, looped: boolean?)
+	local byMarker, timed = {}, {}
+	for i, h in (cfg and cfg.hits) or {} do
+		if type(h.marker) == "string" and h.marker ~= "" then
+			byMarker[h.marker] = byMarker[h.marker] or {}
+			table.insert(byMarker[h.marker], h)
+		elseif h.at then
+			local key = "__at" .. i
+			byMarker[key] = { h }
+			table.insert(timed, { name = key, t = h.at })
+		end
+	end
+	return Anim.preview(rig, kfs, looped ~= false, {
+		markers = timed,
+		onMarker = function(name)
+			for _, h in byMarker[name] or {} do
+				local stop = h.hitstop
+				if stop == nil then
+					stop = if cfg.hitstop ~= nil then cfg.hitstop else (type(h.marker) == "string" and h.marker ~= "")
+				end
+				if stop then
+					local strength = h.strength or (h.shake and h.shake.amp) or cfg.strength or 0.6
+					Anim.hold(if type(stop) == "number" then stop else 0.03 + 0.045 * math.clamp(strength, 0, 2))
+				end
+				if h.effect then
+					pcall(FX.play, h.effect, Abilities.origin(rig, h.attach, h.offset),
+						{ scale = h.scale, parent = workspace.CurrentCamera, important = true })
+				end
+			end
+		end,
+	})
+end
+
+-- The weapon a rig holds in previews (Models > Attach to rig), if any.
+local function heldWeapon(rig: Model?)
+	for _, c in (rig and rig:GetChildren() or {}) do
+		if c:IsA("Model") and c:GetAttribute("ClipForgeHeld") and c:GetAttribute("ClipForgeKind") ~= "shield" then
+			return c
+		end
+	end
+	return nil
+end
+
+-- Animations > Try in game: a Tool in StarterPack that plays the animation and its effects when clicked.
+local function tryInGame(kfs: KeyframeSequence, weapon: Model?)
+	local ability = linkedAbility(kfs)
+	local tool
+	record("try in game " .. kfs.Name, function()
+		tool = TryTool.make({ kfs = kfs, ability = ability and ability.Name or nil, weapon = weapon })
+	end)
+	Selection:Set({ tool })
+	setStatus(string.format("Added \"%s\" to StarterPack%s. Press Play (F5), equip it and click to see it in the game.",
+		tool.Name, if weapon then " (holding " .. weapon.Name .. ")" else ""), UI.OK)
+	return tool
+end
+
 local function buildJob(job, manual: boolean?)
 	if state.claimed[job.id] then
 		return
@@ -424,26 +504,48 @@ local function buildJob(job, manual: boolean?)
 				Installer.saveAnimation(kfs, res.animation, rig)
 				paths.animation = kfs:GetFullName()
 				focus = focus or kfs
-				if state.previewOnBuild then
-					Anim.preview(rig, kfs, true)
-				end
-				-- words with both (e.g. "fire punch"): an ability that fires the effect on every Hit marker
+				-- an animation and an effect made together always play together: an ability that fires the effect on
+				-- the animation's markers (every Hit, or one Fx for a one-off effect), or at a time
 				local timing = res.vfx and res.vfx.analysis and res.vfx.analysis.timing
+				local hits = nil
 				if res._vfxName and res.ability then
-					local hits = {}
-					for _, t in res.ability.at or {} do
-						table.insert(hits, { marker = res.ability.marker or "Hit", at = t, effect = res._vfxName,
+					hits = {}
+					local marker = res.ability.marker
+					if type(marker) == "string" and marker ~= "" then
+						-- one entry fires on every marker of that name (combos included); `at` is for reference
+						table.insert(hits, { marker = marker, at = (res.ability.at or {})[1], effect = res._vfxName,
 							attach = res.ability.attach or "Front" })
-						break -- one marker entry fires on every Hit (combos included); `at` is the fallback timing
+					else
+						for _, t in res.ability.at or {} do
+							table.insert(hits, { at = t, effect = res._vfxName, attach = res.ability.attach or "Front", hitstop = true })
+						end
 					end
-					local ab = Installer.saveAbility({ name = kfs.Name .. "Ability", animation = "rbxassetid://0", keyframes = kfs.Name,
-						hits = hits })
+				elseif res._vfxName and timing and timing.peak then -- an older server: the clip's effect peak
+					hits = { { at = timing.peak, effect = res._vfxName, attach = "Front", hitstop = true } }
+				elseif res._vfxName then
+					local hasHit = false
+					for _, m in res.animation.markers or {} do
+						if m.name == "Hit" then
+							hasHit = true
+							break
+						end
+					end
+					hits = if hasHit
+						then { { marker = "Hit", effect = res._vfxName, attach = "Front" } }
+						else { { at = math.max(0, (res.animation.duration or 1) * 0.4), effect = res._vfxName, attach = "Front", hitstop = true } }
+				end
+				local abilityCfg = nil
+				if hits and #hits > 0 then
+					abilityCfg = { name = kfs.Name .. "Ability", animation = "rbxassetid://0", keyframes = kfs.Name, hits = hits }
+					local ab = Installer.saveAbility(abilityCfg)
 					paths.ability = ab:GetFullName()
-				-- a clip with both: an ability that fires the effect at the clip's detected hit
-				elseif res._vfxName and timing and timing.peak then
-					local ab = Installer.saveAbility({ name = kfs.Name .. "Ability", animation = "rbxassetid://0", keyframes = kfs.Name,
-						hits = { { at = timing.peak, effect = res._vfxName, attach = "Front" } } })
-					paths.ability = ab:GetFullName()
+				end
+				if state.previewOnBuild then
+					if abilityCfg then
+						previewWithAbility(rig, kfs, abilityCfg, true) -- the effect plays on the hit, as in the game
+					else
+						Anim.preview(rig, kfs, true)
+					end
 				end
 			end
 			if res.cutscene then
@@ -542,6 +644,19 @@ local function makeActivity(parent, onlyMine: boolean)
 					r.frame:Destroy()
 					rows[job.id] = nil
 				end, 70)
+				local tryRow = UI.frame(r.frame, { AutomaticSize = Enum.AutomaticSize.None, Size = UDim2.new(1, 0, 0, 28), Visible = false })
+				UI.list(tryRow, 6, true)
+				r.tryRow = tryRow
+				UI.button(tryRow, "Try in game", "secondary", function()
+					local folder = ServerStorage:FindFirstChild("ClipForge") and ServerStorage.ClipForge:FindFirstChild("Animations")
+					local name = r.animName
+					local kfs = folder and name and folder:FindFirstChild(name)
+					if not kfs then
+						setStatus("Build it here first (its animation is not in this place).", UI.WARN)
+						return
+					end
+					tryInGame(kfs, heldWeapon(currentRig(false)))
+				end, 110)
 				rows[job.id] = r
 			end
 			local kind = job.kind
@@ -571,6 +686,9 @@ local function makeActivity(parent, onlyMine: boolean)
 			r.bar.set(job.progress or 0, color)
 			r.msg.Text = (STATUS_TEXT[job.status] or job.status) .. (if msg ~= "" then "  –  " .. msg else "")
 			r.acts.Visible = job.status == "done" and not job.delivered
+			r.animName = job.summary and job.summary.animation and job.summary.animation.name
+			local folder = ServerStorage:FindFirstChild("ClipForge") and ServerStorage.ClipForge:FindFirstChild("Animations")
+			r.tryRow.Visible = job.status == "done" and r.animName ~= nil and folder ~= nil and folder:FindFirstChild(r.animName) ~= nil
 		end
 		for id, r in rows do
 			if not seen[id] then
@@ -754,6 +872,9 @@ local ctx = {
 	setting = setting, saveSetting = saveSetting, record = record,
 	previewEffect = previewEffect, stopEffectPreview = stopEffectPreview, previewOrigin = previewOrigin,
 	currentRig = currentRig, spawnRig = spawnRig,
+	tryInGame = function(kfs, weapon)
+		return tryInGame(kfs, weapon)
+	end,
 	setStatus = function(...)
 		setStatus(...)
 	end,
@@ -810,7 +931,7 @@ do
 	local listCard = UI.card(animations, "Your animations")
 	local listFrame = UI.frame(listCard)
 	UI.list(listFrame, 8)
-	UI.dim(animations, "Publish uploads the animation to your Roblox account (Studio asks first). Use the id it gives you in an Animation object. \"Edit\" opens it in the Animation Editor's saves for this rig.", 12)
+	UI.dim(animations, "Play shows the animation with its linked effects. Try in game puts a tool in StarterPack: press Play (F5), equip it and click (it holds the weapon attached to the preview rig). Publish uploads the animation to your Roblox account (Studio asks first) for live games. \"Edit\" opens it in the Animation Editor's saves for this rig.", 12)
 
 	refreshAnimations = function()
 		UI.clear(listFrame)
@@ -827,16 +948,37 @@ do
 			local item = UI.frame(listFrame)
 			UI.list(item, 4)
 			local dur = kfs:GetAttribute("Duration") or 0
-			UI.label(item, string.format("<b>%s</b>  <font transparency=\"0.4\">%.1f s • %d keys • %s%s</font>", kfs.Name, dur, #kfs:GetChildren(), tostring(kfs:GetAttribute("Rig") or "?"), if kfs.Loop then " • loop" else ""), { TextSize = 13 })
+			local abilityModule, abilityCfg = linkedAbility(kfs)
+			local fxNames = {}
+			for _, h in (abilityCfg and abilityCfg.hits) or {} do
+				if h.effect and not table.find(fxNames, h.effect) then
+					table.insert(fxNames, h.effect)
+				end
+			end
+			UI.label(item, string.format("<b>%s</b>  <font transparency=\"0.4\">%.1f s • %d keys • %s%s%s</font>", kfs.Name, dur, #kfs:GetChildren(),
+				tostring(kfs:GetAttribute("Rig") or "?"), if kfs.Loop then " • loop" else "",
+				if #fxNames > 0 then " • + " .. table.concat(fxNames, ", ") else ""), { TextSize = 13 })
 			local br = UI.row(item, 5, 28)
 			UI.button(br, "Play", "primary", function()
 				local rig = currentRig(true)
 				state.currentKfs = kfs
-				local ok, err = Anim.preview(rig, kfs, true)
+				local _, cfg = linkedAbility(kfs) -- read again: the ability may have been edited
+				local ok, err
+				if cfg then
+					ok, err = previewWithAbility(rig, kfs, cfg, true) -- the linked effects fire on their hits
+					if fillAbilityCard then
+						fillAbilityCard(cfg)
+					end
+				else
+					ok, err = Anim.preview(rig, kfs, true)
+				end
 				if not ok then
 					warn("[ClipForge] " .. tostring(err))
 				end
 			end, 58)
+			UI.button(br, "Try in game", "secondary", function()
+				tryInGame(kfs, heldWeapon(currentRig(false)))
+			end, 96)
 			UI.button(br, "Re-bake", "secondary", function()
 				local data = Installer.motionData(kfs.Name)
 				local rig = currentRig(true)
@@ -878,7 +1020,18 @@ do
 	local abRow = UI.row(abil, 5, 28)
 	local fxBox = UI.input(abRow, "effect (e.g. groundpound or MyEffect)", "", { Size = UDim2.new(1, -66, 1, 0) })
 	local atBox = UI.input(abRow, "at s", "0.4", { Size = UDim2.new(0, 60, 1, 0) })
-	local attach = UI.chips(abil, { "Front", "Ground", "RightHand", "LeftHand", "Root" }, "Front", nil, { columns = 5 })
+	local attach = UI.chips(abil, { "Front", "Ground", "RightHand", "LeftHand", "Root", "Weapon" }, "Front", nil, { columns = 6 })
+	fillAbilityCard = function(cfg)
+		local h = cfg and cfg.hits and cfg.hits[1]
+		if not h then
+			return
+		end
+		fxBox.Text = tostring(h.effect or "")
+		atBox.Text = if h.at then string.format("%.2f", h.at) else atBox.Text
+		if h.attach and attach.set then
+			attach.set(h.attach)
+		end
+	end
 	local function abilityConfig()
 		local kfs = state.currentKfs
 		local effect = trim(fxBox.Text)
@@ -896,9 +1049,10 @@ do
 	UI.button(abr, "Preview", "primary", function()
 		local rig = currentRig(true)
 		if state.currentKfs then
-			Anim.preview(rig, state.currentKfs, false)
+			previewWithAbility(rig, state.currentKfs, abilityConfig(), false)
+		else
+			Abilities.play(abilityConfig(), rig, { noAnimation = true, parent = workspace.CurrentCamera, important = true })
 		end
-		Abilities.play(abilityConfig(), rig, { noAnimation = true, parent = workspace.CurrentCamera, important = true })
 	end, 90)
 	UI.button(abr, "Save ability", "secondary", function()
 		local m
@@ -1023,4 +1177,5 @@ end)
 
 selectTab(setting("Tab", "Create"))
 -- dev hook for automated tests (command bar): _G.ClipForgePlugin
-_G.ClipForgePlugin = { FX = FX, Anim = Anim, Bridge = Bridge, Installer = Installer, Prompt = Prompt, state = state, version = VERSION, widget = widget, selectTab = selectTab }
+_G.ClipForgePlugin = { FX = FX, Anim = Anim, Bridge = Bridge, Installer = Installer, Prompt = Prompt, state = state, version = VERSION, widget = widget, selectTab = selectTab,
+	linkedAbility = linkedAbility, previewWithAbility = previewWithAbility, tryInGame = tryInGame, currentRig = currentRig }

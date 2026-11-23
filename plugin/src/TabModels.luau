@@ -141,6 +141,19 @@ function Tab.build(page, ctx)
 		Selection:Set({ tool })
 		ctx.setStatus("Tool added to StarterPack: players spawn with " .. tool.Name .. ".", UI.OK)
 	end, 100)
+	UI.button(r2, "Try with animation", "secondary", function()
+		local m = target()
+		if not m then
+			ctx.setStatus("Build or select a ClipForge weapon first.", UI.WARN)
+			return
+		end
+		local kfs = ctx.state.currentKfs
+		if not kfs or not kfs.Parent then
+			ctx.setStatus("Play an animation in the Anim tab first: the tool swings the last one you played.", UI.WARN)
+			return
+		end
+		ctx.tryInGame(kfs, m)
+	end, 140)
 	UI.button(r2, "Save", "secondary", function()
 		local m = target()
 		if not m then
@@ -153,7 +166,7 @@ function Tab.build(page, ctx)
 		Selection:Set({ saved })
 		ctx.setStatus("Saved " .. saved:GetFullName(), UI.OK)
 	end, 70)
-	UI.dim(use, "Weapons are welded around a Grip point; Tools use it as their grip. Everything is plain parts: recolour or edit freely.", 12)
+	UI.dim(use, "Weapons are welded around a Grip point; Tools use it as their grip. Try with animation makes a tool that holds this weapon and plays the last animation you played (with its effects) when clicked: press Play to try it. Everything is plain parts: recolour or edit freely.", 12)
 end
 
 return Tab

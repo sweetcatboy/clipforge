@@ -24,7 +24,9 @@ It also works without a video. Type what you want in plain words ("fire punch", 
 - **models**: swords, katanas, axes, spears, staffs, scythes, hammers, shields, orbs, crystals, meteors, portals and
   totems in steel, dark, gold, crystal, energy or wood styles, with a glow colour, ready to hold or turn into Tools;
 - **abilities**: an animation and its effects in sync: the effect fires on the hit frame, with hit-stop and camera
-  shake ("fire punch" makes all three at once);
+  shake ("fire punch" makes all three at once). Video animations get Hit markers where a hand or foot lands;
+- **Try in game**: one click puts a tool in StarterPack that plays an animation and its effects when clicked, holding
+  your weapon. Press Play to see exactly how it looks in the game;
 - a customisable plugin look: Studio, Dark, Midnight or Light theme, your accent colour, text size and density.
 
 Bots can do all of this too. Discord bots, scripts and automations use the REST API, and AI agents (Claude,
@@ -93,9 +95,9 @@ ask for a Roblox animation or VFX from a video. Publishing your own copy: [docs/
 |---|---|
 | **Create** | Paste a link (or a file path) or type what you want ("fire punch", "backflip", "heavy sword slash"), pick Auto / Animation / VFX / Both, optionally a start/end time, press **Generate**. Animation options: In place / Travels / Locked root, Crisp / Smooth / Silky filtering, loop, mirror, face forward. VFX options: Auto or force a type, plus a steering text ("make it purple"). It builds itself when ready. |
 | **VFX** | **Generate a VFX** from a description (Auto / Showcase / Impact / Vortex, chromatic fringes, Reroll for variations). The **effect library**: 100 effects to search, filter by category and star as favourites. Describe one ("huge purple lightning slash"; works offline), recolour it with presets, hex codes or your saved palettes, set size, speed and slash angle, preview it where the camera looks, then **Insert into game**. |
-| **Anim** | Every generated animation: **Play** on the preview rig (select any character, or spawn an R15/R6 dummy), **Re-bake** on another rig, **Edit** in the Animation Editor, **Publish** to your account. The **Ability** card syncs an effect to the animation's hit and saves it as an ability. |
+| **Anim** | Every generated animation: **Play** on the preview rig with its linked effects firing on their hits (select any character, or spawn an R15/R6 dummy), **Try in game** (a tool in StarterPack: press Play, equip it, click), **Re-bake** on another rig, **Edit** in the Animation Editor, **Publish** to your account. The **Ability** card syncs an effect to the animation's hit (Front, Ground, a hand, Root or the Weapon) and saves it as an ability. |
 | **Scenes** | Cutscenes: pick a template (boss intro, victory, dramatic reveal, ability showcase, map flyover, dialogue, defeat) or describe one, add shots from your camera view, lines, effects, shake, titles and fades, **Preview** and **Save to game**. |
-| **Models** | Weapons and props from a description or the type, style and glow pickers. **Attach to rig** (held in the hand during previews), **Make Tool** (players spawn with it) or **Save**. |
+| **Models** | Weapons and props from a description or the type, style and glow pickers. **Attach to rig** (held in the hand during previews), **Make Tool** (players spawn with it), **Try with animation** (a tool that holds the weapon and plays the last animation you played, with its effects, when clicked) or **Save**. |
 | **Bots** | Server address and status, **Bot Link** (this Studio window builds what bots send), the job feed (who asked, what was made, where it went, and **Build here** to retry one). |
 | **⚙** | Theme (Studio, Dark, Midnight, Light), accent colour, text size and density. Saved between sessions. |
 
@@ -128,6 +130,7 @@ Cutscene.play("BossIntro", { actors = { Target = workspace.Boss } })   -- shots 
 
 local Abilities = require(game.ReplicatedStorage.ClipForge.Abilities)
 Abilities.play("SlashAbility", player.Character)                       -- animation + its effects in sync
+-- (or try one without code: Anim > Try in game, then Play)
 ```
 
 ### Use an animation in your game
@@ -275,7 +278,7 @@ black. Each shot is re-shot around your character on the clip's timing, scaled t
 skills/clipforge/  the skill Claude follows (setup, jobs, Studio, troubleshooting)
 commands/          slash commands: setup, make, clip, anim, vfx, generate, cutscene, model, server, jobs, studio
 .mcp.json          registers the ClipForge MCP server (scripts/clipforge-mcp.cmd)
-plugin/src/        Studio plugin (Luau): init.server.luau, UI, Tab* (VFX, Scenes, Models, Settings), FX, Anim,
+plugin/src/        Studio plugin (Luau): init.server.luau, UI, Tab* (VFX, Scenes, Models, Settings), FX, Anim, TryTool,
                    Bridge, Installer, Prompt, Recolor, Blocks, Library (100 effects), Generator, Cutscene, Abilities,
                    ModelKit, VFXTimeline + Recipes/ (from vfxmith, MIT)
 server/clipforge/  bot server (Python): server, jobs, router (words -> what to make), text_motion (the move

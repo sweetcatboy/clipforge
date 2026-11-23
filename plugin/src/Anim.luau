@@ -253,8 +253,21 @@ function Anim.stopPreview()
 	end
 end
 
-function Anim.preview(model: Model, kfs: KeyframeSequence, looped: boolean?)
+-- opts (optional): onMarker = function(name, time, value) called as the preview passes each KeyframeMarker (and each
+-- extra timed point in opts.markers = { { name, t } }), so linked effects fire on their hit frames.
+function Anim.preview(model: Model, kfs: KeyframeSequence, looped: boolean?, opts)
 	Anim.stopPreview()
+	opts = opts or {}
+	local marks = {}
+	for _, kf in kfs:GetKeyframes() do
+		for _, m in (kf :: Keyframe):GetMarkers() do
+			table.insert(marks, { name = m.Name, t = (kf :: Keyframe).Time, value = (m :: KeyframeMarker).Value })
+		end
+	end
+	for _, m in opts.markers or {} do
+		table.insert(marks, m)
+	end
+	local onMarker = opts.onMarker
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
 	if not humanoid then
 		return false, "The rig needs a Humanoid"
@@ -276,16 +289,36 @@ function Anim.preview(model: Model, kfs: KeyframeSequence, looped: boolean?)
 	local track = animator:LoadAnimation(anim)
 	track.Looped = looped ~= false
 	track:Play(0)
-	local state = { model = model, animator = animator, track = track }
+	local state = { model = model, animator = animator, track = track, holdUntil = 0 }
 	state.conn = RunService.Heartbeat:Connect(function(dt)
 		if not track.IsPlaying and not track.Looped then
 			Anim.stopPreview()
 			return
 		end
+		if os.clock() < state.holdUntil then
+			return -- hit-stop: keep the contact pose for a moment
+		end
+		local before = track.TimePosition
 		animator:StepAnimations(dt)
+		local after = track.TimePosition
+		if onMarker and #marks > 0 then
+			local wrapped = after < before
+			for _, m in marks do
+				if (wrapped and (m.t > before or m.t <= after)) or (not wrapped and m.t > before and m.t <= after) then
+					task.spawn(onMarker, m.name, m.t, m.value)
+				end
+			end
+		end
 	end)
 	preview = state
 	return true
+end
+
+-- Hit-stop in a preview: hold the current pose for `seconds`.
+function Anim.hold(seconds: number)
+	if preview then
+		preview.holdUntil = os.clock() + seconds
+	end
 end
 
 function Anim.isPreviewing()

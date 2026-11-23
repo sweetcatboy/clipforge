@@ -7,7 +7,8 @@
 --   { name, animation = "rbxassetid://<published id>", speed = 1,
 --     hits = { { at = 0.42, effect = "groundpound", attach = "Ground", offset = {0, 0, -3}, scale = 1, shake = { amp = 0.6, dur = 0.35 } },
 --              { marker = "Hit", effect = "hitspark", attach = "RightHand" } } }
--- attach: "Root" (HumanoidRootPart), "RightHand", "LeftHand", "Ground" (below the root), "Front" (on the ground in front)
+-- attach: "Root" (HumanoidRootPart), "RightHand", "LeftHand", "Ground" (below the root), "Front" (on the ground in front),
+--         "Weapon" (the middle of the held weapon's blade, or its handle; the right hand without one)
 -- `at` is seconds into the animation; `marker` waits for a KeyframeMarker of that name instead.
 -- Hit-stop: on a marker hit (the contact frame) the animation freezes for 0.03 + 0.045 x strength seconds, which is
 -- what makes a hit feel heavy. strength = hit.strength, else the hit's shake amp, else 0.6. Set hitstop = false (on
@@ -27,12 +28,20 @@ local function resolve(a)
 	if typeof(a) == "Instance" and a:IsA("ModuleScript") then
 		return require(a)
 	end
+	-- saved abilities sit under ReplicatedStorage.ClipForge.Abilities (this module, in a game); the plugin's own copy
+	-- (Studio previews) reads the place's
 	local folder = root:FindFirstChild("Abilities")
 	local mod = folder and folder:FindFirstChild(a)
-	if not mod then
-		error("ClipForge: no ability named " .. tostring(a))
+	if mod then
+		return require(mod)
 	end
-	return require(mod)
+	local placeRoot = game:GetService("ReplicatedStorage"):FindFirstChild("ClipForge")
+	local placeFolder = placeRoot and placeRoot ~= root and placeRoot:FindFirstChild("Abilities")
+	local saved = placeFolder and placeFolder:FindFirstChild(a)
+	if saved and saved:IsA("ModuleScript") then
+		return require(saved:Clone())
+	end
+	error("ClipForge: no ability named " .. tostring(a))
 end
 
 -- Where a hit's effect plays for a character.
@@ -47,6 +56,26 @@ function Abilities.origin(character: Model, attach: string?, offset)
 		params.FilterDescendantsInstances = { character }
 		local hit = workspace:Raycast(cf.Position + Vector3.new(0, 2, 0), Vector3.new(0, -50, 0), params)
 		return if hit then CFrame.new(hit.Position) * cf.Rotation else cf * CFrame.new(0, -3, 0)
+	end
+	if attach == "Weapon" then
+		local held = character:FindFirstChildOfClass("Tool")
+		if not held then
+			for _, c in character:GetChildren() do
+				if c:IsA("Model") and c:GetAttribute("ClipForgeHeld") then
+					held = c
+					break
+				end
+			end
+		end
+		local handle = held and held:FindFirstChild("Handle")
+		if handle and handle:IsA("BasePart") then
+			local a0, a1 = handle:FindFirstChild("TrailBase"), handle:FindFirstChild("TrailTip")
+			local pos = if a0 and a1 and a0:IsA("Attachment") and a1:IsA("Attachment")
+				then (a0.WorldPosition + a1.WorldPosition) / 2
+				else handle.Position
+			return CFrame.new(pos) * flat.Rotation * CFrame.new(off)
+		end
+		attach = "RightHand"
 	end
 	if attach == "RightHand" or attach == "LeftHand" then
 		local hand = character:FindFirstChild(attach) or character:FindFirstChild(if attach == "RightHand" then "Right Arm" else "Left Arm")

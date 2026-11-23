@@ -116,6 +116,10 @@ def test_router_regressions():
     assert text_motion.describe("fighting idle")["moves"] == ["fightidle"]
     assert text_motion.describe("jab cross hook uppercut")["moves"] == ["jab", "cross", "hook", "uppercut"]
     assert text_motion.describe("super saiyan")["moves"] == ["charge"]
+    assert text_motion.describe("triple jump")["moves"] == ["jump", "jump", "jump"]
+    assert text_motion.describe("double slash")["moves"] == ["slash", "slash"]
+    assert text_motion.describe("jab x3")["moves"] == ["jab", "jab", "jab"]
+    assert text_motion.describe("dance twice")["moves"] == ["dance"]  # a looping move is not repeated
 
 
 def test_requests_from_a_real_session():
@@ -139,11 +143,42 @@ def test_requests_from_a_real_session():
     # 'both' with no move in the library still makes the effect, and says so
     pv = store.preview({"prompt": "a swirling black hole", "kind": "both"})
     assert pv["result"]["vfx"] and not pv["result"]["animation"] and "only the effect" in pv["message"], pv["message"]
+    # an effect-only request that names a move gets that move's own effect (a dodge's dash burst)
+    pv = store.preview({"prompt": "dodge", "kind": "vfx"})
+    assert pv["result"]["vfx"]["base"] == "dash", pv["result"]["vfx"]["base"]
     # pressing Generate twice makes one job
     a = store.create({"prompt": "backflip", "client": "studio"})
     b = store.create({"prompt": "backflip", "client": "studio"})
     c = store.create({"prompt": "backflip", "client": "discord"})
     assert a.id == b.id and a.id != c.id
+
+
+def test_clip_hits_and_ability_links():
+    """Video animations get Hit markers where a hand or foot stops sharply; an animation and an effect made together
+    always become an ability (every hit for per-hit effects, one Fx for a one-off, the effect peak with no hits)."""
+    from clipforge.jobs import JobStore
+    from clipforge.motion import detect_hits
+    fps, T = 30, 90
+    P = np.zeros((T, 33, 3))
+    P[:, 23], P[:, 24] = [-0.1, 0, 0], [0.1, 0, 0]
+    x = np.zeros(T)
+    for f in range(T):  # wind back, snap forward for 4 frames, stop dead at frame 40
+        x[f] = 0.1 if f < 30 else (0.1 - 0.02 * (f - 30) if f < 36 else (-0.02 + 0.17 * (f - 36) if f < 40 else x[39]))
+    P[:, 16, 2] = -x
+    assert detect_hits(P, fps) == [40], detect_hits(P, fps)
+    P[:, 16, 2] = -0.1 + 0.05 * np.sin(np.arange(T) / 10)  # a gentle wave has no contact
+    assert detect_hits(P, fps) == []
+
+    anim = {"duration": 2.0, "markers": [{"name": "Hit", "t": 0.5}, {"name": "Hit", "t": 1.2}]}
+    r = {"animation": dict(anim), "vfx": {"base": "punch"}}
+    assert JobStore._link_ability(r, "Front") and r["ability"] == {"marker": "Hit", "attach": "Front", "at": [0.5, 1.2]}
+    r = {"animation": dict(anim), "vfx": {"base": "explosion", "analysis": {"timing": {"peak": 1.1}}}}
+    assert JobStore._link_ability(r) and r["ability"]["marker"] == "Fx" and r["ability"]["at"] == [1.2]
+    assert {"name": "Fx", "t": 1.2} in r["animation"]["markers"]
+    r = {"animation": {"duration": 2.0, "markers": []}, "vfx": {"base": "aura", "analysis": {"timing": {"peak": 0.9}}}}
+    assert JobStore._link_ability(r) and r["ability"] == {"marker": "", "attach": "Front", "at": [0.9]}
+    r = {"animation": {"duration": 2.0, "markers": []}, "vfx": {"base": "aura"}}
+    assert not JobStore._link_ability(r)  # nothing to time it by: the plugin falls back to 40 % in
 
 
 def test_options_are_parsed_strictly():
