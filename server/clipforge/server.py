@@ -34,11 +34,13 @@ OPENAPI = {
                 "properties": {
                     "source": {"type": "string", "description": "Video link or a local file path"},
                     "kind": {"type": "string", "enum": list(KINDS), "description":
-                             "animation/vfx/both: from a clip (vfx also from a prompt). generate: a showcase VFX "
-                             "from a description. cutscene: from a clip's cuts and camera moves, or from a prompt. "
-                             "model: a weapon or prop from a description."},
-                    "prompt": {"type": "string", "description": "Describe what to make (no video needed for vfx, "
-                               "generate, cutscene or model). Quoted text becomes cutscene dialogue."},
+                             "auto (default for words): the server reads the prompt. animation/vfx/both: from a clip "
+                             "or from words (animations come from a hand-keyed move library; both links them as an "
+                             "ability). generate: a showcase VFX from a description. cutscene: from a clip's cuts and "
+                             "camera moves, or from a prompt. model: a weapon or prop from a description."},
+                    "prompt": {"type": "string", "description": "Describe what to make in plain words (no video "
+                               "needed): 'fire punch', 'backflip', 'glowing katana'. Quoted text becomes cutscene "
+                               "dialogue."},
                     "name": {"type": "string"},
                     "client": {"type": "string", "description": "Who is asking, e.g. 'discord-bot'"},
                     "options": {"type": "object", "properties": {
@@ -65,6 +67,8 @@ OPENAPI = {
                            "delete": {"summary": "Cancel/delete a job"}},
         "/api/jobs/{id}/result": {"get": {"summary": "Full animation/VFX data"}},
         "/api/jobs/{id}/delivered": {"post": {"summary": "Mark as built in Studio (the plugin calls this)"}},
+        "/api/preview": {"post": {"summary": "What words would make, without queueing a job: the router's plan, the "
+                                           "message and the result a job would give ({prompt, kind?, name?, options?})"}},
         "/api/presets": {"get": {"summary": "Base effect recipes, plus the catalog"}},
         "/api/catalog": {"get": {"summary": "Everything Studio can build: library effects, generator options, "
                                            "cutscene templates, model types"}},
@@ -82,14 +86,15 @@ code{background:#0f1117;border:1px solid #262b38;border-radius:6px;padding:1px 6
 td{padding:6px 4px;border-top:1px solid #262b38;font-size:13px;vertical-align:top}.ok{color:#5be49b}.bad{color:#ff6b6b}
 .row{display:flex;gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap}</style></head><body><main>
 <h1>ClipForge bot server</h1><div class="sub">Video &rarr; Roblox animation &amp; VFX. Running v__VERSION__ on port __PORT__.</div>
-<div class="card"><b>Make something</b><input id="src" type="text" placeholder="Paste a YouTube / TikTok / Instagram / X link, or describe an effect">
-<div class="row"><select id="kind"><option value="both">Animation + VFX</option><option value="animation">Animation</option>
+<div class="card"><b>Make something</b><input id="src" type="text" placeholder="Paste a YouTube / TikTok / Instagram / X link, or type what you want: fire punch, backflip, glowing katana...">
+<div class="row"><select id="kind"><option value="auto">Auto (read the words)</option><option value="both">Animation + VFX</option><option value="animation">Animation</option>
 <option value="vfx">VFX</option><option value="generate">Generated VFX (describe it)</option>
 <option value="cutscene">Cutscene</option><option value="model">Model (describe it)</option></select><input id="start" placeholder="start s" size="6"><input id="end" placeholder="end s" size="6">
 <button onclick="go()">Generate</button><span id="msg"></span></div></div>
 <div class="card"><b>Recent jobs</b><table id="jobs"></table></div>
 <div class="card"><b>For bots</b><br><code>POST /api/jobs {"source": "&lt;link&gt;", "kind": "both"}</code> &rarr; poll
-<code>GET /api/jobs/&lt;id&gt;?wait=60</code>. Text effects: <code>{"prompt": "huge purple lightning slash"}</code>.
+<code>GET /api/jobs/&lt;id&gt;?wait=60</code>. Any words: <code>{"prompt": "fire punch"}</code> (the server reads them:
+animation, effect, both as an ability, model or cutscene); <code>POST /api/preview</code> says what words would make.
 Generated: <code>{"kind": "generate", "prompt": "golden cube with light wings"}</code>. Cutscenes:
 <code>{"kind": "cutscene", "prompt": "boss intro \"You dare?\""}</code> or with a <code>source</code> clip. Models:
 <code>{"kind": "model", "prompt": "glowing purple katana"}</code>. Options: <a style="color:#a996ff" href="/api/catalog">/api/catalog</a>.
@@ -98,7 +103,7 @@ Spec: <a style="color:#a996ff" href="/openapi.json">/openapi.json</a>. Bots on o
 <script>
 async function go(){const s=document.getElementById('src').value.trim();if(!s)return;
 const isUrl=/^https?:\\/\\//i.test(s)||/^[a-z]:\\\\/i.test(s);const body={kind:document.getElementById('kind').value,client:'web',options:{}};
-if(isUrl)body.source=s;else{body.prompt=s;if(body.kind=='both'||body.kind=='animation')body.kind='vfx'}
+if(isUrl){body.source=s;if(body.kind=='auto')body.kind='both'}else body.prompt=s;
 const st=document.getElementById('start').value,en=document.getElementById('end').value;if(st)body.options.start=+st;if(en)body.options.end=+en;
 const r=await fetch('/api/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const j=await r.json();document.getElementById('msg').textContent=r.ok?('queued '+j.id):(j.error||'error');load()}
@@ -233,6 +238,11 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError as e:
                 return self._err(400, str(e))
             return self._send(201, job.to_dict())
+        if parts == ["api", "preview"]:
+            try:
+                return self._send(200, STORE.preview(body))
+            except ValueError as e:
+                return self._err(400, str(e))
         if len(parts) == 4 and parts[:2] == ["api", "jobs"] and parts[3] == "claim":
             ok, job, why = STORE.claim(parts[2], str(body.get("studio") or "studio"), bool(body.get("release")),
                                        body.get("error"), bool(body.get("force")))

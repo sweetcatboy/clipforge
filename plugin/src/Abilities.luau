@@ -1,4 +1,4 @@
--- ClipForge Abilities: an animation and its effects in sync (hit markers), with camera shake.
+-- ClipForge Abilities: an animation and its effects in sync (hit markers), with hit-stop and camera shake.
 --
 --   local Abilities = require(game.ReplicatedStorage.ClipForge.Abilities)
 --   Abilities.play("GroundSmash", player.Character)          -- from a LocalScript (effects are client-side)
@@ -9,6 +9,9 @@
 --              { marker = "Hit", effect = "hitspark", attach = "RightHand" } } }
 -- attach: "Root" (HumanoidRootPart), "RightHand", "LeftHand", "Ground" (below the root), "Front" (on the ground in front)
 -- `at` is seconds into the animation; `marker` waits for a KeyframeMarker of that name instead.
+-- Hit-stop: on a marker hit (the contact frame) the animation freezes for 0.03 + 0.045 x strength seconds, which is
+-- what makes a hit feel heavy. strength = hit.strength, else the hit's shake amp, else 0.6. Set hitstop = false (on
+-- the config or a hit) to turn it off, or a number of seconds to fix it; timed hits (`at`) get it with hitstop = true.
 
 local root = script.Parent
 local Abilities = {}
@@ -59,7 +62,7 @@ function Abilities.origin(character: Model, attach: string?, offset)
 end
 
 -- Plays the ability. opts: animationId (overrides config), speed, track (an already-loaded AnimationTrack),
--- noAnimation (effects only), onHit(hit). Returns { track, stop() }.
+-- noAnimation (effects only), noHitStop, onHit(hit). Returns { track, stop() }.
 function Abilities.play(ability, character: Model, opts)
 	opts = opts or {}
 	local cfg = resolve(ability)
@@ -88,7 +91,25 @@ function Abilities.play(ability, character: Model, opts)
 		end
 	end
 	local handles, conns, timers = {}, {}, {}
-	local function fire(hit)
+	local function hitStop(hit, fromMarker: boolean)
+		local want = if hit.hitstop ~= nil then hit.hitstop elseif cfg.hitstop ~= nil then cfg.hitstop else fromMarker
+		if not track or not want or opts.noHitStop then
+			return
+		end
+		local strength = hit.strength or (hit.shake and hit.shake.amp) or cfg.strength or 0.6
+		local dur = if type(want) == "number" then want else 0.03 + 0.045 * math.clamp(strength, 0, 2)
+		if dur <= 0 or not track.IsPlaying then
+			return
+		end
+		track:AdjustSpeed(0)
+		table.insert(timers, task.delay(dur, function()
+			if track.IsPlaying and track.Speed == 0 then
+				track:AdjustSpeed(speed)
+			end
+		end))
+	end
+	local function fire(hit, fromMarker: boolean?)
+		hitStop(hit, fromMarker == true)
 		if opts.onHit then
 			pcall(opts.onHit, hit)
 		end
@@ -108,7 +129,7 @@ function Abilities.play(ability, character: Model, opts)
 	for _, hit in cfg.hits or {} do
 		if hit.marker and track then
 			table.insert(conns, track:GetMarkerReachedSignal(hit.marker):Connect(function()
-				fire(hit)
+				fire(hit, true)
 			end))
 		else
 			table.insert(timers, task.delay((hit.at or 0) / math.max(speed, 0.01), fire, hit))

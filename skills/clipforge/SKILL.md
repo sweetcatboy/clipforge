@@ -1,6 +1,6 @@
 ---
 name: clipforge
-description: Make Roblox animations, VFX, generated showcase VFX, cutscenes and weapon/prop models from social-media videos (YouTube, Shorts, TikTok, Instagram Reels, X/Twitter, Reddit, Twitch clips, a local video file) or from a text description, using ClipForge (bot server + Roblox Studio plugin with a 100-effect library). Use for "turn this TikTok/YouTube dance into a Roblox animation", "make a VFX like this video", "make a huge purple lightning slash effect", "generate a golden cube with wings", "make a boss intro cutscene", "copy the camera work of this trailer", "make a glowing katana", setting up or fixing ClipForge, its bot server, the Studio plugin, Bot Link, or connecting a Discord/AI bot to it.
+description: Make Roblox animations, VFX, generated showcase VFX, cutscenes and weapon/prop models from social-media videos (YouTube, Shorts, TikTok, Instagram Reels, X/Twitter, Reddit, Twitch clips, a local video file) or from plain words, using ClipForge (bot server + Roblox Studio plugin with a 100-effect library and a hand-keyed move library). Use for "turn this TikTok/YouTube dance into a Roblox animation", "make a fire punch", "make me a backflip animation", "make a VFX like this video", "make a huge purple lightning slash effect", "generate a golden cube with wings", "make a boss intro cutscene", "copy the camera work of this trailer", "make a glowing katana", setting up or fixing ClipForge, its bot server, the Studio plugin, Bot Link, or connecting a Discord/AI bot to it.
 ---
 
 # ClipForge
@@ -9,9 +9,10 @@ ClipForge has three parts:
 
 - a local **bot server** (Python) that downloads clips, tracks body pose and reads VFX;
 - a **Roblox Studio plugin** that builds the results in the user's place;
-- **MCP tools**: `clipforge_from_video`, `clipforge_vfx_from_prompt`, `clipforge_generate_vfx`,
-  `clipforge_make_cutscene`, `clipforge_make_model`, `clipforge_job_status`, `clipforge_list_jobs`,
-  `clipforge_presets` (everything Studio can build: the 100 effects, generator options, cutscene templates, models).
+- **MCP tools**: `clipforge_make` (any request in plain words), `clipforge_animation_from_prompt`,
+  `clipforge_from_video`, `clipforge_vfx_from_prompt`, `clipforge_generate_vfx`, `clipforge_make_cutscene`,
+  `clipforge_make_model`, `clipforge_job_status`, `clipforge_list_jobs`, `clipforge_presets` (everything Studio can
+  build: the 100 effects, the animation moves, generator options, cutscene templates, models).
 
 Windows only.
 
@@ -63,6 +64,20 @@ $job = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:7313/api/jobs -Conte
 Invoke-RestMethod "http://127.0.0.1:7313/api/jobs/$($job.id)?wait=240"     # long-poll until done/failed
 ```
 
+- **Any request in plain words:** `{ "prompt": "fire punch" }` (or `clipforge_make`). `kind` defaults to `auto`:
+  the server reads the words and makes an animation, an effect, both (linked as an ability: the effect fires on the
+  animation's Hit frame, with hit-stop and camera shake), a generated piece, a model or a cutscene. "fire punch" =
+  a punch + a fire impact; "backflip" = an animation; "kamehameha" = the beam move + its beam; "chain lightning" or
+  "coin burst" = an effect; "glowing katana" = a model; "boss intro" = a cutscene. `POST /api/preview` with the same
+  body says what it would make without making it (MCP: `preview: true`).
+- **Animations from words:** `{ "prompt": "uppercut", "kind": "animation" }` (or `both` to add the effect and the
+  ability). Moves: punches (jab, cross, hook, uppercut), kicks (front, roundhouse), sword (slash, thrust, overhead,
+  spin), powers (cast, power-up, beam, throw, ground pound), block, movement (idle, fighting stance, walk, run,
+  sprint, jump, backflip, front flip, dash, dodge roll), reactions (hit, knockdown, dizzy), emotes (wave, cheer,
+  dance, clap, bow, point, salute, shrug, flex, laugh, victory pose, sad) and combos (punch, sword, kick). "then" or
+  commas chain moves ("jab then cross then hook"). Words: fast/slow (speed), heavy/huge/light (power), left or
+  mirror, loop. `options`: `speed`, `loop`, `mirror`. They are hand-keyed (anticipation, snappy strikes, hit holds,
+  follow-through, overlap) and baked onto any R15 or R6 rig.
 - **From a clip:** `kind` is `animation` (body motion), `vfx` (the effect in it) or `both`. Body tracking runs at
   roughly real time on a CPU: a 15 s clip takes about 0.5-2 min, so tell the user it is working.
 - **From a description:** `{ "prompt": "huge purple lightning slash", "kind": "vfx" }` returns in about a second.
@@ -115,7 +130,9 @@ Results go to:
   re-baking (long clips are split into `Part1`, `Part2`... children). A copy goes to
   `ServerStorage.RBX_ANIMSAVES.<rig>` for the Animation Editor. The plugin's **Anim > Publish** uploads it and returns
   an asset id. A clip with both an animation and a VFX also gets an ability in
-  `ReplicatedStorage.ClipForge.Abilities` that fires the effect on the detected hit.
+  `ReplicatedStorage.ClipForge.Abilities` that fires the effect on the detected hit; words with both ("fire punch")
+  get one that fires on every Hit marker, with hit-stop. In a LocalScript:
+  `require(game.ReplicatedStorage.ClipForge.Abilities).play("<Name>Ability", character, { animationId = "rbxassetid://<published id>" })`.
 - **Generated VFX:** a config module in `ReplicatedStorage.ClipForge.Effects` like any effect (plays with `FX.play`).
 - **Cutscene:** `ReplicatedStorage.ClipForge.Cutscenes.<Name>`. It also opens in the plugin's **Scenes** tab for
   preview. In a LocalScript:
@@ -135,8 +152,9 @@ Say what was made, its name and where it is in Studio. For VFX, also give:
 - the contact sheet of what the reader saw, `CF_HOME\data\jobs\<id>\sheet.jpg`. Open it with Read and describe it
   in one line.
 
-For animations, also give the duration, the key count and `quality.detectedRatio`. Below 0.8, suggest a clip where
-the whole body stays in frame.
+For animations from a clip, also give the duration, the key count and `quality.detectedRatio`. Below 0.8, suggest a
+clip where the whole body stays in frame. For animations from words, give the move(s) and duration from the job
+`message`, and say that the Hit marker drives effects, hit-stop and damage timing (`track:GetMarkerReachedSignal("Hit")`).
 
 For generated VFX, models and prompt cutscenes, the job `message` already says what was made (mode and layers;
 style, type and glow; template, lines and effect): repeat it plainly. For a cutscene from a clip, list the shots
@@ -162,8 +180,8 @@ Studio tried and failed: give the error, suggest updating the Studio plugin (`/c
 ## 6. Bots
 
 - Any bot posts to `POST /api/jobs` (fields in `ROOT\README.md`; options listed by `GET /api/catalog`).
-  `ROOT\examples\discord_bot.py` is a ready-made Discord bot with `!clip`, `!anim`, `!vfx`, `!gen`, `!cutscene` and
-  `!model`.
+  `ROOT\examples\discord_bot.py` is a ready-made Discord bot with `!make` (any words; mentioning the bot works too),
+  `!clip`, `!anim` (a link or words), `!vfx`, `!gen`, `!cutscene` and `!model`.
 - Bots on another machine need `start-server.ps1 -Public` and `Authorization: Bearer <CF_HOME\data\bot_token.txt>`.
 - Requests that carry a browser `Origin` header are refused, so a website can't drive the server.
 

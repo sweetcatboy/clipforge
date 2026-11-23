@@ -175,6 +175,7 @@ function Anim.build(data, info, opts)
 	end)
 	kfs.Priority = if ok and prio then prio else Enum.AnimationPriority.Action
 	local times = data.keyTimes
+	local keyframes = {}
 	for i, t in times do
 		local T = solveKey(info, data, i, groundLock)
 		local kf = Instance.new("Keyframe")
@@ -195,8 +196,26 @@ function Anim.build(data, info, opts)
 			poses[m.Part1.Name] = pose
 		end
 		kf.Parent = kfs
+		keyframes[i] = kf
 		if i % 60 == 0 then
 			task.wait()
+		end
+	end
+	-- named markers (e.g. "Hit" on the contact frame): game code and abilities listen with
+	-- track:GetMarkerReachedSignal("Hit") to fire effects, damage and hit-stop exactly on the frame
+	for _, mk in data.markers or {} do
+		local best, bestDt = nil, math.huge
+		for i, t in times do
+			local dt = math.abs(t - (mk.t or 0))
+			if dt < bestDt then
+				best, bestDt = keyframes[i], dt
+			end
+		end
+		if best then
+			local marker = Instance.new("KeyframeMarker")
+			marker.Name = mk.name or "Hit"
+			marker.Value = mk.value or ""
+			best:AddMarker(marker)
 		end
 	end
 	kfs:SetAttribute("ClipForge", true)

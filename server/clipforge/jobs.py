@@ -1,9 +1,9 @@
 """Job queue: bots and the Studio plugin submit jobs, a worker turns clips and prompts into animation, VFX, cutscene
 and model data, the plugin builds finished jobs in Studio and marks them delivered.
 
-Kinds: animation / vfx / both (from a clip; vfx also from a prompt), generate (a showcase VFX from a description),
-cutscene (from a clip's cuts and camera moves, or from a prompt via the plugin's templates), model (a weapon or prop
-from a description)."""
+Kinds: animation / vfx / both (from a clip, or from words: text animations come from a library of hand-keyed moves),
+generate (a showcase VFX from a description), cutscene (from a clip's cuts and camera moves, or from a prompt via the
+plugin's templates), model (a weapon or prop from a description), auto (a free-form message: the router decides)."""
 from __future__ import annotations
 
 import json
@@ -18,10 +18,14 @@ import uuid
 
 from . import config
 
-KINDS = ("animation", "vfx", "both", "generate", "cutscene", "model")
-NEEDS_PROMPT = ("generate", "model")
-NEEDS_SOURCE = ("animation", "both")
+KINDS = ("animation", "vfx", "both", "generate", "cutscene", "model", "auto")
+NEEDS_PROMPT = ("generate", "model", "auto")
 STATUS_ACTIVE = ("queued", "downloading", "tracking", "analyzing", "building")
+
+
+def _a(phrase: str) -> str:
+    """'a slash' / 'an energy beam'."""
+    return ("an " if phrase[:1].lower() in "aeiou" else "a ") + phrase
 
 
 def _now():
@@ -98,7 +102,7 @@ class JobStore:
 
     # --- API ------------------------------------------------------------------------------------------------------
     def create(self, payload: dict) -> Job:
-        kind = (payload.get("kind") or ("vfx" if payload.get("prompt") and not payload.get("source") else "both"))
+        kind = (payload.get("kind") or ("auto" if payload.get("prompt") and not payload.get("source") else "both"))
         kind = kind.lower()
         if kind not in KINDS:
             raise ValueError(f"kind must be one of {', '.join(KINDS)}")
@@ -106,8 +110,8 @@ class JobStore:
         prompt = (payload.get("prompt") or "").strip()
         if not source and not prompt:
             raise ValueError("Give a video link/file in 'source' or describe what to make in 'prompt'.")
-        if not source and kind in NEEDS_SOURCE:
-            raise ValueError("Animations need a video 'source' (prompts make VFX, generated VFX, cutscenes and models).")
+        if source and kind == "auto":
+            kind = "both"  # a clip: read both the body motion and the effect
         if not prompt and kind in NEEDS_PROMPT:
             raise ValueError(f"'{kind}' jobs need a 'prompt' describing what to make.")
         with self.lock:
@@ -121,6 +125,33 @@ class JobStore:
             self.changed.notify_all()
         self.q.put(job.id)
         return job
+
+    def preview(self, payload: dict) -> dict:
+        """What words would make, worked out now without queueing a job (so nothing gets built in Studio):
+        {"plan": the router's reading, "message": what a job would report, "result": the job result it would have}."""
+        from . import router
+
+        kind = (payload.get("kind") or "auto").lower()
+        prompt = (payload.get("prompt") or "").strip()
+        if kind not in KINDS:
+            raise ValueError(f"kind must be one of {', '.join(KINDS)}")
+        if not prompt:
+            raise ValueError("Give the words to read in 'prompt'.")
+        job = Job(id="preview", seq=0, kind=kind, source=None, prompt=prompt, options=payload.get("options") or {},
+                  client="preview", name=_safe_name(payload.get("name") or "", ""), status="running", progress=0.0,
+                  message="", created=_now(), updated=_now())
+        result = {"jobId": None, "kind": kind, "name": job.name, "client": "preview", "source": None,
+                  "animation": None, "vfx": None}
+        out = {"plan": router.plan(prompt, kind="auto" if kind == "both" else kind)}
+
+        def capture(_job, res, message):
+            out["result"], out["message"] = res, message
+
+        if kind in ("generate", "model", "cutscene"):
+            self._run_prompt(job, result, job.options, finish=capture)
+        else:
+            self._run_text(job, result, job.options, finish=capture)
+        return out
 
     def get(self, job_id: str) -> Job | None:
         with self.lock:
@@ -263,12 +294,7 @@ class JobStore:
             return
 
         if not job.source:
-            cfg = prompts.config_from_prompt(job.prompt, job.name or None)
-            job.name = job.name or cfg["name"]
-            cfg["name"] = job.name
-            result["vfx"] = cfg
-            result["name"] = job.name
-            self._finish(job, result, f"Made a {cfg['description']} from the prompt")
+            self._run_text(job, result, opts)
             return
 
         from . import fetch
@@ -338,11 +364,44 @@ class JobStore:
             msg += " (" + "; ".join(warnings) + ")"
         self._finish(job, result, msg)
 
-    def _run_prompt(self, job: Job, result: dict, opts: dict):
+    def _run_text(self, job: Job, result: dict, opts: dict, finish=None):
+        """No video: words -> an animation from the move library and/or an effect (linked as an ability that fires the
+        effect on the animation's Hit marker), or whatever else the router reads in a free-form message."""
+        from . import prompts, router, text_motion
+
+        plan = router.plan(job.prompt, kind=job.kind)
+        for other in ("generate", "model", "cutscene"):
+            if plan[other]:
+                self._run_prompt(job, result, opts, kind=other, finish=finish)
+                return
+        made, anim = [], None
+        if plan["animation"]:
+            anim = text_motion.from_prompt(job.prompt, (job.name + ("Anim" if plan["vfx"] else "")) if job.name else None,
+                                           speed=opts.get("speed"), mirror=opts.get("mirror"), loop=opts.get("loop"))
+            result["animation"] = anim
+            made.append(f"{_a(anim['description'].lower())} animation ({anim['duration']:.2f} s)")
+        if plan["vfx"]:
+            vp = router.vfx_prompt_for(job.prompt, anim["moves"][0] if anim else None)
+            cfg = prompts.config_from_prompt(vp, (job.name + ("VFX" if anim else "")) if job.name else None)
+            cfg["prompt"] = job.prompt
+            result["vfx"] = cfg
+            made.append(f"{_a(cfg['description'])} effect")
+        if anim and plan["vfx"] and anim.get("markers"):
+            fx, attach = text_motion.MOVE_FX.get(anim["moves"][0], ("hitspark", "Front"))
+            result["ability"] = {"marker": "Hit", "attach": attach, "at": [m["t"] for m in anim["markers"]]}
+            made.append("linked as an ability")
+        if not made:
+            raise ValueError("Nothing to make from that. Name a move (punch, backflip, wave...) or an effect.")
+        job.name = job.name or (anim["name"] if anim else result["vfx"]["name"])
+        result["name"] = job.name
+        (finish or self._finish)(job, result, "Made " + ", ".join(made))
+
+    def _run_prompt(self, job: Job, result: dict, opts: dict, kind: str | None = None, finish=None):
         """Prompt-only kinds: the description Studio will build, worked out here so the bot hears what it gets."""
         from . import catalog
 
-        if job.kind == "generate":
+        kind = kind or job.kind
+        if kind == "generate":
             d = catalog.generate_desc(job.prompt, seed=int(opts.get("seed") or 1), mode=opts.get("mode"),
                                       chromatic=opts.get("chromatic"))
             if opts.get("scale"):
@@ -353,7 +412,7 @@ class JobStore:
                              "scale": 1.0, "speed": float(opts.get("speed") or 1.0), "intensity": 1.0,
                              "prompt": job.prompt, "analysis": {"confidence": 1.0}}
             message = f"Generated a {desc} VFX"
-        elif job.kind == "model":
+        elif kind == "model":
             m = catalog.model_from_prompt(job.prompt, job.name or None)
             for k in ("type", "style", "glow", "scale"):
                 if opts.get(k) not in (None, ""):
@@ -377,7 +436,7 @@ class JobStore:
             fx = f", {c['effect']} effect" if c.get("effect") else ""
             message = f"Made a {c['templateTitle'].lower()} cutscene{said}{fx}"
         result["name"] = job.name = name
-        self._finish(job, result, message)
+        (finish or self._finish)(job, result, message)
 
     def _finish(self, job: Job, result: dict, message: str):
         d = self._dir(job.id)
