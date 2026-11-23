@@ -1,6 +1,6 @@
 {
   "name": "clipforge",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Turn YouTube, TikTok, Instagram and X clips (or a text prompt) into professional Roblox animations, VFX, cutscenes and weapon/prop models, with a 100-effect library and a showcase VFX generator. Ships the ClipForge Roblox Studio plugin, a local bot server with a REST API, and MCP tools so Claude and other bots can make them.",
   "author": { "name": "sweetcatboy", "url": "https://github.com/sweetcatboy" },
   "homepage": "https://github.com/sweetcatboy/clipforge",

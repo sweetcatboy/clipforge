@@ -40,7 +40,8 @@ def _has(text: str, word: str) -> bool:
 
 
 def _text(prompt: str | None) -> str:
-    return " " + (prompt or "").lower() + " "
+    from .words import normalize
+    return " " + normalize(prompt) + " "
 
 
 def _camel(prompt: str | None, fallback: str, limit: int = 4) -> str:

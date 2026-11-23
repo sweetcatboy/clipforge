@@ -176,7 +176,7 @@ def main():
         os.makedirs(plugins, exist_ok=True)
         dst = os.path.join(plugins, "ClipForge.rbxmx")
         shutil.copyfile(out, dst)
-        print(f"installed {dst} (Studio reloads local plugins automatically)")
+        print(f"installed {dst} (open Studio windows keep the old copy: restart Studio to load this one)")
     if a.dev:
         content = studio_content_dir()
         if not content:

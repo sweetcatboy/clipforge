@@ -323,7 +323,7 @@ add({ id = "poison", title = "Poison Cloud", category = "Elements", tags = "pois
 	end })
 
 ---------------------------------------------------------------------------------------------------------- MAGIC
-add({ id = "aura", title = "Aura Charge", category = "Magic", recipe = "aura", tags = "aura charge power up transform ki",
+add({ id = "aura", title = "Aura Charge", category = "Magic", recipe = "aura", tags = "aura charge power up transform ki saiyan",
 	blurb = "Building aura, swirl pulling in, release burst" })
 add({ id = "beam", title = "Beam", category = "Magic", recipe = "beam", tags = "beam laser ray cannon kamehameha",
 	blurb = "Charge, hitscan beam with core line, impact, smoke" })
@@ -1549,8 +1549,46 @@ end
 -- "meteor strike"); then title words, then tags. `prefer` (the broad kind the words point at, e.g. "slash") breaks
 -- near-ties; combos lose ties to single effects; "loop"/"ambient" favours looping effects. 2 or more is a real match.
 -- (Same scoring as the bot server's catalog.match_effect, so bots and the plugin read text the same way.)
+-- Word forms people type -> the words effects are tagged with ("exploding" finds the explosion). The base word is
+-- added next to the original. Same table as the bot server's words.py.
+Library.FORMS = {
+	["explode"] = "explosion", ["explodes"] = "explosion", ["exploding"] = "explosion", ["exploded"] = "explosion",
+	["explosive"] = "explosion", ["kaboom"] = "explosion", ["blow up"] = "explosion", ["blows up"] = "explosion",
+	["nuke"] = "explosion", ["nuked"] = "explosion", ["fireworks"] = "firework", ["snowing"] = "snow",
+	["raining"] = "rain", ["saiyan"] = "aura", ["freeze"] = "ice", ["freezes"] = "ice", ["freezing"] = "ice",
+	["icy"] = "ice", ["burn"] = "fire", ["burns"] = "fire", ["burning"] = "fire", ["blazing"] = "fire",
+	["fiery"] = "fire", ["zap"] = "lightning", ["zaps"] = "lightning", ["zapping"] = "lightning",
+	["electrocute"] = "lightning", ["heals"] = "heal", ["healing"] = "heal", ["healed"] = "heal",
+	["teleports"] = "teleport", ["teleporting"] = "teleport", ["shielding"] = "shield", ["shields"] = "shield",
+	["summons"] = "summon", ["summoning"] = "summon", ["slashing"] = "slash", ["slashes"] = "slash",
+	["slashed"] = "slash", ["slice"] = "slash", ["slicing"] = "slash", ["smashing"] = "smash", ["smashes"] = "smash",
+	["slamming"] = "slam", ["slams"] = "slam", ["stabbing"] = "stab", ["stabs"] = "stab", ["stabbed"] = "stab",
+	["punching"] = "punch", ["punches"] = "punch", ["punched"] = "punch", ["kicking"] = "kick", ["kicks"] = "kick",
+	["kicked"] = "kick", ["jumping"] = "jump", ["jumps"] = "jump", ["leaping"] = "leap", ["flipping"] = "flip",
+	["flips"] = "flip", ["dancing"] = "dance", ["dances"] = "dance", ["running"] = "run", ["runs"] = "run",
+	["jog"] = "run", ["jogs"] = "run", ["jogging"] = "run", ["walking"] = "walk", ["walks"] = "walk",
+	["sprinting"] = "sprint", ["dashing"] = "dash", ["dashes"] = "dash", ["rolling"] = "roll", ["rolls"] = "roll",
+	["waving"] = "wave", ["cheering"] = "cheer", ["celebrating"] = "celebrate", ["clapping"] = "clap",
+	["claps"] = "clap", ["bowing"] = "bow", ["pointing"] = "point", ["saluting"] = "salute", ["shrugging"] = "shrug",
+	["flexing"] = "flex", ["laughing"] = "laugh", ["crying"] = "cry", ["blocking"] = "block", ["parrying"] = "parry",
+	["throwing"] = "throw", ["throws"] = "throw", ["casting"] = "cast", ["casts"] = "cast", ["charging"] = "charge",
+	["spinning"] = "spin", ["spins"] = "spin", ["dodging"] = "dodge", ["dodges"] = "dodge", ["dying"] = "die",
+	["dies"] = "die",
+}
+
+function Library.normalize(text: string?): string
+	local t = string.lower(text or "")
+	local extra = {}
+	for form, base in Library.FORMS do
+		if string.find(" " .. t .. " ", "%f[%a]" .. form .. "%f[%A]") and not table.find(extra, base) then
+			table.insert(extra, base)
+		end
+	end
+	return if #extra > 0 then t .. " " .. table.concat(extra, " ") else t
+end
+
 function Library.match(text: string, prefer: string?)
-	local t = " " .. string.lower(text or "") .. " "
+	local t = " " .. Library.normalize(text) .. " "
 	local function has(w)
 		return string.find(t, "%f[%a]" .. string.gsub(w, "%p", "%%%0") .. "%f[%A]") ~= nil
 	end

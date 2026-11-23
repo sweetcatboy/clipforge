@@ -1,12 +1,47 @@
 # Changelog
 
+## 1.2.1
+
+Fixes from bug testing, including requests from a real session.
+
+**Words**
+
+- Unclear messages ("make a vfx", a typo, a stray word) now ask what to make instead of building a random effect or
+  a glowing cube. "surprise me" / "something cool" still makes a generated piece.
+- Word forms are understood: "exploding", "punching", "freezing", "zap", "nuke", "fireworks", "turns into",
+  "becomes", "summon", "super saiyan"... (in the plugin's VFX search too).
+- Fixed misreads:
+  - "lightning kick" and "kick with lightning" made only an effect;
+  - "cross slash" made a cross punch;
+  - "meteor strike" made a meteor model;
+  - "fighting idle" made the relaxed idle (the move is now called Fighting Idle);
+  - "punch" made the three-hit combo;
+  - "throw a fireball" and "bow with petals" had no effect;
+  - "jab cross hook uppercut" made one move.
+- An effect said outright is always made with the move ("turns into a black hole").
+- Both mode: when no move matches, the effect is still made, and the job says so (it used to fail outright).
+- A one-off effect (a black hole, an explosion) fires once, on the last hit, instead of on every hit of a multi-hit
+  move. Summoned effects appear in front of the character instead of at the hand.
+- The same request sent twice within 5 seconds (a double-click) makes one job, not two copies in your place. The
+  Create tab's Generate button is busy while it sends.
+- Option text such as `"mirror": "false"` is read as false; a bad speed gets a clear error.
+
+**Server, MCP and docs**
+
+- Bad numbers in the API (`?limit=abc`, `?wait=nan`) returned no answer or could hang a request; they are now a 400.
+  Every request gets an answer, even if something goes wrong.
+- MCP: a first message starting with a byte-order mark (some shells add one) was silently dropped, so the client
+  never got its `initialize` reply. Unreadable lines now get a JSON-RPC parse error.
+- `"... that explodes"` picked the explosion as the main effect instead of the fireball.
+- The installer no longer claims Studio reloads the plugin by itself: restart Studio after an update.
+
 ## 1.2.0
 
 **New**
 
 - **Animations from words**: a library of 40+ hand-keyed moves (jab, cross, hook, uppercut, front and roundhouse
   kicks, sword slash, thrust, overhead slam, spin attack, spell cast, power up, energy beam, throw, ground pound,
-  block, idle, fighting stance, walk, run, sprint, jump, backflip, front flip, dash, dodge roll, hit reaction,
+  block, idle, fighting idle, walk, run, sprint, jump, backflip, front flip, dash, dodge roll, hit reaction,
   knockdown, dizzy, and emotes: wave, cheer, dance, clap, bow, point, salute, shrug, flex, laugh, victory pose, sad)
   plus punch, sword and kick combos. "jab then cross then uppercut" chains moves; speed, power, side and loop words
   are read. Baked onto any R15 or R6 rig with a Hit marker on contact frames.

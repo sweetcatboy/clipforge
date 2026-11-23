@@ -98,8 +98,11 @@ def config_from_prompt(prompt: str, name: str | None = None) -> dict:
             archetype = primary_kind
             break
 
-    # a specific effect from the plugin's library ("heal", "tornado", "meteor", "level up"...) beats a broad archetype
-    entry, lib_score = catalog.match_effect(prompt, prefer=ARCHETYPES[archetype][0])
+    # a specific effect from the plugin's library ("heal", "tornado", "meteor", "level up"...) beats a broad archetype.
+    # A follow-up clause ("... that explodes", "... into a slam") adds a second part below; it must not pick the first.
+    follow_at = re.search(r"\b(and|then|into|with|that)\b.*\b(explo|boom|blast|impact|slam)", text)
+    main = text[:follow_at.start()] if follow_at and follow_at.start() > 0 else prompt
+    entry, lib_score = catalog.match_effect(main, prefer=ARCHETYPES[archetype][0])
     use_lib = entry is not None and lib_score >= 2
 
     found = [(text.find(" " + c), c) for c in COLORS if re.search(r"\b" + re.escape(c) + r"\b", text)]

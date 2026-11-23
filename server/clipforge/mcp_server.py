@@ -337,12 +337,17 @@ def run():
     print(f"[clipforge-mcp] ready ({note})", file=sys.stderr, flush=True)
     out = sys.stdout
     for line in sys.stdin:
-        line = line.strip()
+        line = line.strip().lstrip(chr(0xFEFF)).strip()  # some shells start the stream with a byte-order mark
         if not line:
             continue
         try:
             msg = json.loads(line)
         except json.JSONDecodeError:
+            out.write(json.dumps({"jsonrpc": "2.0", "id": None,
+                                  "error": {"code": -32700, "message": "Parse error: send one JSON-RPC message per line"}}) + "\n")
+            out.flush()
+            continue
+        if not isinstance(msg, dict):
             continue
         mid = msg.get("id")
         method = msg.get("method")

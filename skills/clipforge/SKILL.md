@@ -44,7 +44,8 @@ Use PowerShell for every command below.
      and reopen the terminal.
 2. Check: `& "<PY>" -c "import mediapipe, cv2, yt_dlp; print('ok')"`.
 3. Studio plugin: `& "<PY>" "<ROOT>\scripts\build_plugin.py" --install`. This writes
-   `%LOCALAPPDATA%\Roblox\Plugins\ClipForge.rbxmx`, and Studio reloads local plugins on its own.
+   `%LOCALAPPDATA%\Roblox\Plugins\ClipForge.rbxmx`. Studio windows that are already open keep the old copy
+   until Studio restarts, so tell the user to restart Studio after an update.
 4. Start the server (section 0.2).
 5. Tell the user:
    - "In Studio: Plugins tab > ClipForge, allow it to reach 127.0.0.1 when asked. Turn on **Bot Link** in the Bots tab
@@ -72,7 +73,7 @@ Invoke-RestMethod "http://127.0.0.1:7313/api/jobs/$($job.id)?wait=240"     # lon
   body says what it would make without making it (MCP: `preview: true`).
 - **Animations from words:** `{ "prompt": "uppercut", "kind": "animation" }` (or `both` to add the effect and the
   ability). Moves: punches (jab, cross, hook, uppercut), kicks (front, roundhouse), sword (slash, thrust, overhead,
-  spin), powers (cast, power-up, beam, throw, ground pound), block, movement (idle, fighting stance, walk, run,
+  spin), powers (cast, power-up, beam, throw, ground pound), block, movement (idle, fighting idle, walk, run,
   sprint, jump, backflip, front flip, dash, dodge roll), reactions (hit, knockdown, dizzy), emotes (wave, cheer,
   dance, clap, bow, point, salute, shrug, flex, laugh, victory pose, sad) and combos (punch, sword, kick). "then" or
   commas chain moves ("jab then cross then hook"). Words: fast/slow (speed), heavy/huge/light (power), left or
