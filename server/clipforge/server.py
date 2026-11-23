@@ -10,8 +10,8 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from . import config
-from .jobs import JobStore
+from . import catalog, config
+from .jobs import KINDS, JobStore
 from .vfx_analyze import ARCHETYPES
 
 STORE: JobStore | None = None
@@ -25,15 +25,20 @@ OPENAPI = {
     "openapi": "3.0.3",
     "info": {"title": "ClipForge bot API", "version": config.VERSION,
              "description": "Turn social-media clips (YouTube, TikTok, Instagram, X...) or text prompts into Roblox "
-                            "animations and VFX. Finished jobs are built in Roblox Studio by the ClipForge plugin."},
+                            "animations, VFX, showcase-grade generated VFX, cutscenes and weapon/prop models. "
+                            "Finished jobs are built in Roblox Studio by the ClipForge plugin."},
     "paths": {
         "/api/jobs": {
             "post": {"summary": "Create a job", "requestBody": {"content": {"application/json": {"schema": {
                 "type": "object",
                 "properties": {
                     "source": {"type": "string", "description": "Video link or a local file path"},
-                    "kind": {"type": "string", "enum": ["animation", "vfx", "both"]},
-                    "prompt": {"type": "string", "description": "Describe an effect (no video needed for VFX)"},
+                    "kind": {"type": "string", "enum": list(KINDS), "description":
+                             "animation/vfx/both: from a clip (vfx also from a prompt). generate: a showcase VFX "
+                             "from a description. cutscene: from a clip's cuts and camera moves, or from a prompt. "
+                             "model: a weapon or prop from a description."},
+                    "prompt": {"type": "string", "description": "Describe what to make (no video needed for vfx, "
+                               "generate, cutscene or model). Quoted text becomes cutscene dialogue."},
                     "name": {"type": "string"},
                     "client": {"type": "string", "description": "Who is asking, e.g. 'discord-bot'"},
                     "options": {"type": "object", "properties": {
@@ -42,14 +47,27 @@ OPENAPI = {
                         "loop": {"type": "boolean"}, "mirror": {"type": "boolean"},
                         "smoothing": {"type": "number", "minimum": 0, "maximum": 1},
                         "lockFacing": {"type": "boolean"}, "speed": {"type": "number"},
-                        "style": {"type": "string", "enum": ["auto"] + list(ARCHETYPES)},
-                        "scale": {"type": "number"}}}}}}}}},
+                        "style": {"type": "string", "description": "vfx: auto or " + ", ".join(ARCHETYPES)
+                                  + ". model: steel, dark, gold, crystal, energy, wood"},
+                        "scale": {"type": "number"},
+                        "mode": {"type": "string", "enum": list(catalog.GENERATOR_MODES), "description": "generate"},
+                        "seed": {"type": "integer", "description": "generate: another variation of the same idea"},
+                        "chromatic": {"type": "boolean", "description": "generate: rainbow RGB-split fringes"},
+                        "who": {"type": "string", "description": "cutscene: the actor name the shots film "
+                                "(play with actors = { [who] = model }); default Target"},
+                        "template": {"type": "string", "description": "cutscene: force a template"},
+                        "title": {"type": "string"}, "sub": {"type": "string"},
+                        "effect": {"type": "string", "description": "cutscene: library effect to fire on the beat"},
+                        "type": {"type": "string", "description": "model: force a model type"},
+                        "glow": {"type": "string", "description": "model: glow colour #RRGGBB"}}}}}}}}},
             "get": {"summary": "List jobs (?since=seq&status=done&undelivered=1)"}},
         "/api/jobs/{id}": {"get": {"summary": "Job status (?wait=seconds long-polls until it finishes)"},
                            "delete": {"summary": "Cancel/delete a job"}},
         "/api/jobs/{id}/result": {"get": {"summary": "Full animation/VFX data"}},
         "/api/jobs/{id}/delivered": {"post": {"summary": "Mark as built in Studio (the plugin calls this)"}},
-        "/api/presets": {"get": {"summary": "Base effect recipes"}},
+        "/api/presets": {"get": {"summary": "Base effect recipes, plus the catalog"}},
+        "/api/catalog": {"get": {"summary": "Everything Studio can build: library effects, generator options, "
+                                           "cutscene templates, model types"}},
         "/api/health": {"get": {"summary": "Server status"}},
     },
 }
@@ -66,17 +84,21 @@ td{padding:6px 4px;border-top:1px solid #262b38;font-size:13px;vertical-align:to
 <h1>ClipForge bot server</h1><div class="sub">Video &rarr; Roblox animation &amp; VFX. Running v__VERSION__ on port __PORT__.</div>
 <div class="card"><b>Make something</b><input id="src" type="text" placeholder="Paste a YouTube / TikTok / Instagram / X link, or describe an effect">
 <div class="row"><select id="kind"><option value="both">Animation + VFX</option><option value="animation">Animation</option>
-<option value="vfx">VFX</option></select><input id="start" placeholder="start s" size="6"><input id="end" placeholder="end s" size="6">
+<option value="vfx">VFX</option><option value="generate">Generated VFX (describe it)</option>
+<option value="cutscene">Cutscene</option><option value="model">Model (describe it)</option></select><input id="start" placeholder="start s" size="6"><input id="end" placeholder="end s" size="6">
 <button onclick="go()">Generate</button><span id="msg"></span></div></div>
 <div class="card"><b>Recent jobs</b><table id="jobs"></table></div>
 <div class="card"><b>For bots</b><br><code>POST /api/jobs {"source": "&lt;link&gt;", "kind": "both"}</code> &rarr; poll
 <code>GET /api/jobs/&lt;id&gt;?wait=60</code>. Text effects: <code>{"prompt": "huge purple lightning slash"}</code>.
+Generated: <code>{"kind": "generate", "prompt": "golden cube with light wings"}</code>. Cutscenes:
+<code>{"kind": "cutscene", "prompt": "boss intro \"You dare?\""}</code> or with a <code>source</code> clip. Models:
+<code>{"kind": "model", "prompt": "glowing purple katana"}</code>. Options: <a style="color:#a996ff" href="/api/catalog">/api/catalog</a>.
 Spec: <a style="color:#a996ff" href="/openapi.json">/openapi.json</a>. Bots on other machines send
 <code>Authorization: Bearer &lt;token&gt;</code> (token in <code>server/data/bot_token.txt</code>).</div>
 <script>
 async function go(){const s=document.getElementById('src').value.trim();if(!s)return;
 const isUrl=/^https?:\\/\\//i.test(s)||/^[a-z]:\\\\/i.test(s);const body={kind:document.getElementById('kind').value,client:'web',options:{}};
-if(isUrl)body.source=s;else{body.prompt=s;body.kind='vfx'}
+if(isUrl)body.source=s;else{body.prompt=s;if(body.kind=='both'||body.kind=='animation')body.kind='vfx'}
 const st=document.getElementById('start').value,en=document.getElementById('end').value;if(st)body.options.start=+st;if(en)body.options.end=+en;
 const r=await fetch('/api/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const j=await r.json();document.getElementById('msg').textContent=r.ok?('queued '+j.id):(j.error||'error');load()}
@@ -165,7 +187,9 @@ class Handler(BaseHTTPRequestHandler):
             active = len([j for j in STORE.list(limit=10000) if j["status"] not in ("done", "failed", "cancelled")])
             return self._send(200, {"ok": True, "name": "ClipForge", "version": config.VERSION, "active": active})
         if parts[1:] == ["presets"]:
-            return self._send(200, {"presets": presets()})
+            return self._send(200, {"presets": presets(), "catalog": catalog.summary()})
+        if parts[1:] == ["catalog"]:
+            return self._send(200, catalog.summary())
         if parts[1:2] == ["jobs"]:
             if len(parts) == 2:
                 jobs = STORE.list(since=int(q.get("since") or 0), status=q.get("status"),
@@ -210,10 +234,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._err(400, str(e))
             return self._send(201, job.to_dict())
         if len(parts) == 4 and parts[:2] == ["api", "jobs"] and parts[3] == "claim":
-            ok, job = STORE.claim(parts[2], str(body.get("studio") or "studio"), bool(body.get("release")))
+            ok, job, why = STORE.claim(parts[2], str(body.get("studio") or "studio"), bool(body.get("release")),
+                                       body.get("error"), bool(body.get("force")))
             if job is None:
                 return self._err(404, "No such job")
-            return self._send(200, job.to_dict()) if ok else self._err(409, "Already taken by " + str(job.claimedBy))
+            return self._send(200, job.to_dict()) if ok else self._err(409, why)
         if len(parts) == 4 and parts[:2] == ["api", "jobs"] and parts[3] == "delivered":
             job = STORE.mark_delivered(parts[2], body)
             return self._send(200, job.to_dict()) if job else self._err(404, "No such job")

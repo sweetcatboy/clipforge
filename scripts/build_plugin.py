@@ -10,7 +10,9 @@ ModuleScript under it (folders become Folders)."""
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import re
 import shutil
 import sys
 from xml.sax.saxutils import escape
@@ -18,6 +20,64 @@ from xml.sax.saxutils import escape
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "plugin", "src")
 DIST = os.path.join(ROOT, "dist")
+CATALOG = os.path.join(ROOT, "server", "clipforge", "catalog.json")
+
+
+def _read(name: str) -> str:
+    with open(os.path.join(SRC, name), "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def _field(block: str, key: str):
+    m = re.search(r"\b" + key + r'\s*=\s*"([^"]*)"', block)
+    return m.group(1) if m else None
+
+
+def build_catalog() -> dict:
+    """What the plugin can build, read from its Luau source, so the bot server can match prompts and list options
+    without a copy that drifts: library effects, cutscene templates, model types and the generator's vocabulary."""
+    lib = _read("Library.luau")
+    starts = [m.start() for m in re.finditer(r"\badd\(\{\s*id\s*=", lib)]
+    effects = []
+    for i, s in enumerate(starts):
+        block = lib[s: starts[i + 1] if i + 1 < len(starts) else len(lib)]
+        effects.append({
+            "id": _field(block, "id"), "title": _field(block, "title"), "category": _field(block, "category"),
+            "tags": _field(block, "tags") or "",
+            "ambient": bool(re.search(r"\bambient\s*=\s*true\b", block)),
+            "hidden": bool(re.search(r"\bhidden\s*=\s*true\b", block)),
+            "combo": bool(re.search(r"\bcombo\s*=\s*\{", block)),
+        })
+    cut = _read("Cutscene.luau")
+    tpl_block = cut[cut.index("Cutscene.TEMPLATES = {"):]
+    tpl_block = tpl_block[: tpl_block.index("\n}")]
+    cutscenes = [{"id": a, "title": b, "tags": c}
+                 for a, b, c in re.findall(r'\{ id = "(\w+)", title = "([^"]+)", tags = "([^"]*)" \}', tpl_block)]
+    mk = _read("ModelKit.luau")
+    models = [{"id": a, "title": b, "kind": c, "tags": d}
+              for a, b, c, d in re.findall(r'\{ id = "(\w+)", title = "([^"]+)", kind = "(\w+)", tags = "([^"]*)" \}', mk)]
+    gen = _read("Generator.luau")
+    want = [{"group": g, "key": k, "words": re.findall(r'"([^"]+)"', words)}
+            for g, k, words in re.findall(r'want\(d\.(\w+), "(\w+)", \{([^}]*)\}\)', gen)]
+    themes_block = gen[gen.index("local THEMES = {"):]
+    themes_block = themes_block[: themes_block.index("\n}")]
+    themes = [{"palette": p, "words": re.findall(r'"([^"]+)"', words)}
+              for words, p in re.findall(r'\{ words = \{([^}]*)\}, palette = "(\w+)" \}', themes_block)]
+    if not (effects and cutscenes and models and want and themes):
+        sys.exit("catalog: could not read the effect/cutscene/model/generator lists from plugin/src")
+    return {"effects": effects, "cutscenes": cutscenes, "models": models,
+            "generator": {"want": want, "themes": themes}}
+
+
+def write_catalog() -> None:
+    cat = build_catalog()
+    text = json.dumps(cat, indent=1) + "\n"
+    old = open(CATALOG, encoding="utf-8").read() if os.path.exists(CATALOG) else ""
+    if text != old:
+        with open(CATALOG, "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
+    print(f"catalog: {len(cat['effects'])} effects, {len(cat['cutscenes'])} cutscene templates, "
+          f"{len(cat['models'])} model types -> {os.path.relpath(CATALOG, ROOT)}")
 
 
 class Ref:
@@ -105,6 +165,7 @@ def main():
     ap.add_argument("--install", action="store_true")
     ap.add_argument("--dev", action="store_true")
     a = ap.parse_args()
+    write_catalog()
     os.makedirs(DIST, exist_ok=True)
     out = os.path.join(DIST, "ClipForge.rbxmx")
     with open(out, "w", encoding="utf-8") as f:

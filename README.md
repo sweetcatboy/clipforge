@@ -7,6 +7,19 @@ Instagram Reels, X, Reddit, Twitch clips and more, or a video file, into:
   proportions, classic `Motor6D` or the newer `AnimationConstraint` joints).
 - **VFX**: the clip's effect (a slash, a slam, an explosion, an aura...) is read for its palette, timing, motion and
   shape. ClipForge then builds a layered effect in that style from studied professional recipes.
+- **Cutscenes**: copy a clip's editing and camera work (cuts, push-ins, orbits, shake, flashes, fades) onto your
+  own character, or make one from a description with dialogue, titles, letterbox and effects.
+
+It also works without a video:
+
+- a **library of 100 effects** (combat, elements, magic, movement, game feel, ambient loops), recoloured and sized
+  from plain words ("ice slam", "huge purple lightning slash", "coin burst");
+- a **VFX generator** for showcase pieces: a glowing cube, wireframe cube, crystal or orb with orbit rings, wings,
+  halos, light shafts, lightning, nebula, stars, floating squares, petals or leaves, chromatic fringes;
+- **models**: swords, katanas, axes, spears, staffs, scythes, hammers, shields, orbs, crystals, meteors, portals and
+  totems in steel, dark, gold, crystal, energy or wood styles, with a glow colour, ready to hold or turn into Tools;
+- **abilities**: an animation and its effects in sync (the effect fires on the hit frame);
+- a customisable plugin look: Studio, Dark, Midnight or Light theme, your accent colour, text size and density.
 
 Bots can do all of this too. Discord bots, scripts and automations use the REST API, and AI agents (Claude,
 Cursor...) use the MCP server. Whatever a bot makes is built in your open Studio place.
@@ -32,7 +45,10 @@ This repo is a Claude Code plugin with its own marketplace. Install it with:
 | `/clipforge:setup [check]` | Install everything (Python env, pose model, Studio plugin, bot server), or only report what is missing |
 | `/clipforge:clip <link> [animation\|vfx\|both] [3-9] [Name]` | Clip to animation and/or VFX, built in Studio |
 | `/clipforge:anim <link> [loop] [mirror] [travel]` | Animation only |
-| `/clipforge:vfx <description or link>` | VFX from a description ("huge purple lightning slash") or a clip |
+| `/clipforge:vfx <description or link>` | VFX from the 100-effect library ("huge purple lightning slash", "coin burst") or a clip |
+| `/clipforge:generate <description>` | Showcase VFX from the generator ("golden glowing cube with light wings") |
+| `/clipforge:cutscene <description or link>` | Cutscene from a description (`boss intro "You dare?"`) or a clip's camera work |
+| `/clipforge:model <description>` | Weapon or prop model ("glowing purple katana") |
 | `/clipforge:server [start\|stop\|status\|public]` | Manage the bot server |
 | `/clipforge:jobs [n \| id]` | Recent jobs and whether Studio built them |
 | `/clipforge:studio [install\|build]` | Install or update the Studio plugin, or build the `.rbxmx` to share |
@@ -69,14 +85,18 @@ ask for a Roblox animation or VFX from a video. Publishing your own copy: [docs/
 | Tab | What it does |
 |---|---|
 | **Create** | Paste a link (or a file path), pick Animation / VFX / Both, optionally a start/end time, press **Generate**. Animation options: In place / Travels / Locked root, Crisp / Smooth / Silky filtering, loop, mirror, face forward. VFX options: Auto or force a type, plus a steering text ("make it purple"). It builds itself when ready. |
-| **Library** | 11 professional base effects (slash, ground slam, explosion, aura charge, beam, lightning, projectile, fire eruption, frost burst, void breach, holy burst). Describe one ("huge purple lightning slash"; works offline), recolour it with presets or hex codes, set size, speed and slash angle, preview it where the camera looks, then **Insert into game**. |
-| **Animations** | Every generated animation: **Play** on the preview rig (select any character, or spawn an R15/R6 dummy), **Re-bake** on another rig, **Edit** in the Animation Editor, **Publish** to your account. |
-| **Bots** | Server address and status, **Bot Link** (this Studio window builds what bots send), the job feed (who asked, what was made, where it went). |
+| **VFX** | **Generate a VFX** from a description (Auto / Showcase / Impact / Vortex, chromatic fringes, Reroll for variations). The **effect library**: 100 effects to search, filter by category and star as favourites. Describe one ("huge purple lightning slash"; works offline), recolour it with presets, hex codes or your saved palettes, set size, speed and slash angle, preview it where the camera looks, then **Insert into game**. |
+| **Anim** | Every generated animation: **Play** on the preview rig (select any character, or spawn an R15/R6 dummy), **Re-bake** on another rig, **Edit** in the Animation Editor, **Publish** to your account. The **Ability** card syncs an effect to the animation's hit and saves it as an ability. |
+| **Scenes** | Cutscenes: pick a template (boss intro, victory, dramatic reveal, ability showcase, map flyover, dialogue, defeat) or describe one, add shots from your camera view, lines, effects, shake, titles and fades, **Preview** and **Save to game**. |
+| **Models** | Weapons and props from a description or the type, style and glow pickers. **Attach to rig** (held in the hand during previews), **Make Tool** (players spawn with it) or **Save**. |
+| **Bots** | Server address and status, **Bot Link** (this Studio window builds what bots send), the job feed (who asked, what was made, where it went, and **Build here** to retry one). |
+| **⚙** | Theme (Studio, Dark, Midnight, Light), accent colour, text size and density. Saved between sessions. |
 
 Where things go in your place:
 
-- `ReplicatedStorage.ClipForge`: the effect runtime (`FX`, `VFXTimeline`, `Recolor`, `Recipes`) and `Effects/`,
-  one small config module per effect, editable by hand.
+- `ReplicatedStorage.ClipForge`: the runtime (`FX`, `VFXTimeline`, `Recolor`, `Blocks`, `Library`, `Generator`,
+  `Cutscene`, `Abilities`, `Recipes`) and `Effects/`, `Cutscenes/`, `Abilities/`, `Models/`: one small, editable
+  module (or model) per thing you saved.
 - `ServerStorage.ClipForge.Animations`: the KeyframeSequences. `MotionData` keeps the raw motion for re-baking.
 - `ServerStorage.RBX_ANIMSAVES`: a copy the Animation Editor can load.
 
@@ -90,7 +110,18 @@ FX.play("GroundSlam", hitPosition, { scale = 1.4, speed = 0.9 })  -- CFrame, Vec
 ```
 
 Effects are visual, so play them on clients. For a server-side ability, fire a RemoteEvent to all clients with the
-effect name and CFrame, then call `FX.play` there.
+effect name and CFrame, then call `FX.play` there. Library effects play by id too (`FX.play("coinburst", pos)`);
+looping ones (rain, campfire, loot beam...) run until you call `:stop()` on the handle `FX.play` returns.
+
+### Play a cutscene or an ability (LocalScript)
+
+```lua
+local Cutscene = require(game.ReplicatedStorage.ClipForge.Cutscene)
+Cutscene.play("BossIntro", { actors = { Target = workspace.Boss } })   -- shots film the "Target" actor
+
+local Abilities = require(game.ReplicatedStorage.ClipForge.Abilities)
+Abilities.play("SlashAbility", player.Character)                       -- animation + its effects in sync
+```
 
 ### Use an animation in your game
 
@@ -113,14 +144,22 @@ curl -X POST http://127.0.0.1:7313/api/jobs -H "Content-Type: application/json" 
 # a description -> VFX
 curl -X POST http://127.0.0.1:7313/api/jobs -H "Content-Type: application/json" \
      -d '{"prompt": "huge purple lightning slash", "client": "my-bot"}'
+# generated showcase VFX, a cutscene, a model
+curl -X POST http://127.0.0.1:7313/api/jobs -H "Content-Type: application/json" \
+     -d '{"kind": "generate", "prompt": "galaxy wireframe cube with orbit rings"}'
+curl -X POST http://127.0.0.1:7313/api/jobs -H "Content-Type: application/json" \
+     -d '{"kind": "cutscene", "prompt": "boss intro \"You dare challenge me?\"", "options": {"who": "Boss"}}'
+curl -X POST http://127.0.0.1:7313/api/jobs -H "Content-Type: application/json" \
+     -d '{"kind": "model", "prompt": "glowing purple katana"}'
 # wait for it (long-poll up to 300 s)
 curl "http://127.0.0.1:7313/api/jobs/<id>?wait=60"
 ```
 
 | Endpoint | |
 |---|---|
-| `POST /api/jobs` | `source` (link or file path) and/or `prompt`, `kind` (`animation`/`vfx`/`both`), `name`, `client`, `options` (`start`, `end`, `rootMotion`: `inplace`/`full`/`none`, `smoothing` 0-1, `loop`, `mirror`, `lockFacing`, `speed`, `style`, `scale`) |
-| `GET /api/jobs/{id}?wait=s` | status, progress, message, summary, `delivered` (built in Studio) |
+| `POST /api/jobs` | `source` (link or file path) and/or `prompt`, `kind` (`animation`/`vfx`/`both` from a clip, `vfx` from a prompt, `generate`, `cutscene` from a prompt or a clip, `model`), `name`, `client`, `options` (clips: `start`, `end`, `rootMotion`: `inplace`/`full`/`none`, `smoothing` 0-1, `loop`, `mirror`, `lockFacing`, `speed`, `style`, `scale`; generate: `mode`, `seed`, `chromatic`; cutscene: `who`, `template`, `title`, `effect`; model: `style`, `glow`, `scale`) |
+| `GET /api/jobs/{id}?wait=s` | status, progress, message, summary, `delivered` (built in Studio), `buildError` (Studio could not build it) |
+| `GET /api/catalog` | everything Studio can build: the 100 effects, generator options, cutscene templates, model types |
 | `GET /api/jobs/{id}/result` | the full animation keys / effect config |
 | `GET /api/jobs/{id}/files/sheet.jpg` | contact sheet of what the VFX reader saw, with the palette |
 | `GET /api/jobs` · `DELETE /api/jobs/{id}` · `GET /api/presets` · `GET /api/health` | |
@@ -129,8 +168,8 @@ Bots on another machine: run `.\start-server.ps1 -Public` and send `Authorizatio
 `%USERPROFILE%\.clipforge\data\bot_token.txt`. Local requests need no token. Requests from web pages are refused, so a
 website can't drive your server.
 
-**MCP (AI agents):** tools `clipforge_from_video`, `clipforge_vfx_from_prompt`, `clipforge_job_status`,
-`clipforge_list_jobs`, `clipforge_presets`. If no bot server is running, the MCP server starts one. The Claude Code
+**MCP (AI agents):** tools `clipforge_from_video`, `clipforge_vfx_from_prompt`, `clipforge_generate_vfx`,
+`clipforge_make_cutscene`, `clipforge_make_model`, `clipforge_job_status`, `clipforge_list_jobs`, `clipforge_presets`. If no bot server is running, the MCP server starts one. The Claude Code
 plugin registers it for you (`.mcp.json`). To add it by hand to Claude Code:
 
 ```powershell
@@ -140,10 +179,12 @@ claude mcp add clipforge --env PYTHONPATH="<this folder>\server" -- "$env:USERPR
 JSON clients (Claude Desktop, Cursor): `"command": "<user>\\.clipforge\\venv\\Scripts\\python.exe"`,
 `"args": ["-m", "clipforge", "mcp"]`, `"env": {"PYTHONPATH": "<this folder>\\server"}`.
 
-**CLI:** `python -m clipforge make <link> --kind both --start 3 --end 9`, or
-`python -m clipforge make --prompt "small holy heal"`. Run it from `server\` with the venv's python.
+**CLI:** `python -m clipforge make <link> --kind both --start 3 --end 9`,
+`python -m clipforge make --prompt "small holy heal"`, or `--kind generate|cutscene|model --prompt "..."`. Run it
+from `server\` with the venv's python.
 
-**Discord:** `examples/discord_bot.py` is a ready-made bot with `!clip`, `!anim` and `!vfx` commands.
+**Discord:** `examples/discord_bot.py` is a ready-made bot with `!clip`, `!anim`, `!vfx`, `!gen`, `!cutscene` and
+`!model` commands.
 
 ## How it makes it look professional
 
@@ -170,6 +211,18 @@ studied open-source Roblox effects: layered impact frames with ink twins, flipbo
 embers, scorch marks. ClipForge recolours a recipe without flattening its light and dark values, retimes it,
 scales it and turns it. Two-beat clips (a slash into a blast, for example) become combined effects.
 
+The other 89 library effects are composed from tuned building blocks (or, for combos such as Cross Slash and Meteor Strike, from other effects) that follow the same rules: hits land in one
+frame, rings race out and ease off, flashes carry size with shape rather than flat white blobs, every effect keeps a
+white core, a saturated body and a deep tone so it recolours cleanly, and things that break leave something behind
+(smoke, embers, scorch, debris). Some use real geometry: faceted crystal and rock spikes, coins, leaves, petals,
+jagged lightning. The generator composes showcase pieces from layers the same way, with a soft bloom while they
+play.
+
+**Cutscenes from a clip:** colour-histogram cut detection (flashes and fades are told apart from cuts), camera
+motion per shot from tracked features (push in, pull out, orbit, tilt, locked off), shot size from the body pose
+(close-up, medium, full, wide), hand-held shake from the jitter left after smoothing, white flashes and fades to
+black. Each shot is re-shot around your character on the clip's timing, scaled to the character's size.
+
 ## Tips & limits
 
 - **Clips for animation:** one person, the whole body visible, a steady camera, 3-20 s. Use start/end to pick the
@@ -188,13 +241,16 @@ scales it and turns it. Two-beat clips (a slash into a blast, for example) becom
 ```
 .claude-plugin/    Claude Code plugin manifest + marketplace entry
 skills/clipforge/  the skill Claude follows (setup, jobs, Studio, troubleshooting)
-commands/          slash commands: setup, clip, anim, vfx, server, jobs, studio
+commands/          slash commands: setup, clip, anim, vfx, generate, cutscene, model, server, jobs, studio
 .mcp.json          registers the ClipForge MCP server (scripts/clipforge-mcp.cmd)
-plugin/src/        Studio plugin (Luau): init.server.luau, UI, FX, Anim, Bridge, Installer, Prompt, Recolor,
-                   VFXTimeline + Recipes/ (from vfxmith, MIT)
-server/clipforge/  bot server (Python): server, jobs, fetch, pose, motion, vfx_analyze, prompts, mcp_server
-server/tests/      motion round-trip tests, VFX reader tests (python tests/test_motion.py, tests/test_vfx.py)
-scripts/           build_plugin.py (packs plugin/src into dist/ClipForge.rbxmx, --install), clipforge-mcp.cmd
+plugin/src/        Studio plugin (Luau): init.server.luau, UI, Tab* (VFX, Scenes, Models, Settings), FX, Anim,
+                   Bridge, Installer, Prompt, Recolor, Blocks, Library (100 effects), Generator, Cutscene, Abilities,
+                   ModelKit, VFXTimeline + Recipes/ (from vfxmith, MIT)
+server/clipforge/  bot server (Python): server, jobs, fetch, pose, motion, vfx_analyze, prompts, catalog (+ the
+                   catalog.json build_plugin.py writes from the plugin source), cutscene_video, mcp_server
+server/tests/      test_motion, test_vfx, test_catalog, test_cutscene_video (python tests/<name>.py)
+scripts/           build_plugin.py (packs plugin/src into dist/ClipForge.rbxmx, --install; refreshes
+                   server/clipforge/catalog.json), clipforge-mcp.cmd
 examples/          discord_bot.py
 docs/              PUBLISHING.md (GitHub upload, install, updates)
 ```

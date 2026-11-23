@@ -67,7 +67,10 @@ To test before publishing, `/plugin marketplace add C:\path\to\this\folder` work
 | `/clipforge:setup [check]` | Install everything, or only report what is missing |
 | `/clipforge:clip <link> [animation\|vfx\|both] [3-9] [Name]` | Clip to animation and/or VFX |
 | `/clipforge:anim <link> [loop] [mirror] [travel]` | Animation only |
-| `/clipforge:vfx <description or link>` | VFX from a description ("huge purple lightning slash") or a clip |
+| `/clipforge:vfx <description or link>` | VFX from the 100-effect library or a clip |
+| `/clipforge:generate <description>` | Showcase VFX from the generator |
+| `/clipforge:cutscene <description or link>` | Cutscene from a description or a clip's camera work |
+| `/clipforge:model <description>` | Weapon or prop model |
 | `/clipforge:server [start\|stop\|status\|public]` | Manage the bot server |
 | `/clipforge:jobs [n \| id]` | Recent jobs and whether Studio built them |
 | `/clipforge:studio [install\|build]` | Install or update the Roblox Studio plugin, or build the `.rbxmx` |
@@ -78,7 +81,7 @@ from a video.
 ## 4. Share the Studio plugin on its own (optional)
 
 - **GitHub release:** run `/clipforge:studio build` (or `python scripts\build_plugin.py`). On GitHub open
-  **Releases > Draft a new release**, tag `v1.0.0`, and attach `dist\ClipForge.rbxmx`. People drop it into
+  **Releases > Draft a new release**, tag the version (for example `v1.1.0`), and attach `dist\ClipForge.rbxmx`. People drop it into
   `%LOCALAPPDATA%\Roblox\Plugins`.
 - **Creator Store:** insert `dist\ClipForge.rbxmx` into a place, right-click the `ClipForge` script and choose
   **Publish as Plugin**.

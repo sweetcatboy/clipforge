@@ -11,4 +11,4 @@ Use the `clipforge` skill (ClipForge plugin): $ARGUMENTS
 - **Otherwise:** list the last N jobs (default 10) with `clipforge_list_jobs` or `GET /api/jobs?limit=N`, as a compact
   table: name, kind, from (client), status, built in Studio yes/no.
 
-If jobs are done but not built, remind the user to open the ClipForge widget in Studio and turn on Bot Link.
+If jobs are done but not built, remind the user to open the ClipForge widget in Studio and turn on Bot Link. If a job has a `buildError`, Studio tried and failed: show the error and suggest `/clipforge:studio install`, then **Build here** on that job in the plugin's Bots tab.

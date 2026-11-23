@@ -1,12 +1,12 @@
 {
   "name": "clipforge",
   "owner": { "name": "sweetcatboy", "url": "https://github.com/sweetcatboy" },
-  "metadata": { "description": "Video to Roblox animation & VFX for Claude Code." },
+  "metadata": { "description": "Video to Roblox animation, VFX, cutscenes and models for Claude Code." },
   "plugins": [
     {
       "name": "clipforge",
       "source": "./",
-      "description": "Make Roblox animations and VFX from social-media videos or prompts, with a Studio plugin and bot/MCP access."
+      "description": "Make Roblox animations, VFX, cutscenes and models from social-media videos or prompts, with a Studio plugin and bot/MCP access."
     }
   ]
 }

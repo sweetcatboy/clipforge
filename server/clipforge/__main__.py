@@ -4,6 +4,9 @@
   python -m clipforge mcp                                MCP server for AI bots (stdio)
   python -m clipforge make <link-or-file> [--kind both] [--start 3 --end 9] [--name Dance]
   python -m clipforge make --prompt "huge purple lightning slash"
+  python -m clipforge make --kind generate --prompt "golden glowing cube with light wings"
+  python -m clipforge make --kind cutscene --prompt 'boss intro "You dare challenge me?"'   (or a clip link)
+  python -m clipforge make --kind model --prompt "glowing purple katana"
   python -m clipforge token                              print the token bots on other machines must send
 """
 from __future__ import annotations
@@ -29,7 +32,7 @@ def cmd_make(a):
     payload = {"kind": a.kind, "client": "cli", "name": a.name, "options": {}}
     if a.prompt:
         payload["prompt"] = a.prompt
-        if not a.source:
+        if not a.source and a.kind in ("both", "animation"):
             payload["kind"] = "vfx"
     if a.source:
         payload["source"] = a.source
@@ -37,6 +40,12 @@ def cmd_make(a):
         v = getattr(a, k.lower() if k != "rootMotion" else "root_motion", None)
         if v is not None:
             payload["options"][k] = v
+    for k in ("mode", "seed", "who", "template", "title", "effect", "glow", "scale"):
+        v = getattr(a, k, None)
+        if v is not None:
+            payload["options"][k] = v
+    if a.chromatic:
+        payload["options"]["chromatic"] = True
     if a.loop:
         payload["options"]["loop"] = True
     if a.mirror:
@@ -91,11 +100,20 @@ def main(argv=None):
     m = sub.add_parser("make")
     m.add_argument("source", nargs="?")
     m.add_argument("--prompt")
-    m.add_argument("--kind", default="both", choices=["animation", "vfx", "both"])
+    m.add_argument("--kind", default="both", choices=["animation", "vfx", "both", "generate", "cutscene", "model"])
     m.add_argument("--name")
     m.add_argument("--start", type=float)
     m.add_argument("--end", type=float)
-    m.add_argument("--style")
+    m.add_argument("--style", help="vfx: slash, impact... / model: steel, dark, gold, crystal, energy, wood")
+    m.add_argument("--mode", choices=["showcase", "impact", "vortex"], help="generate")
+    m.add_argument("--seed", type=int, help="generate: another variation")
+    m.add_argument("--chromatic", action="store_true", help="generate: rainbow fringes")
+    m.add_argument("--who", help="cutscene: actor name the shots film (default Target)")
+    m.add_argument("--template", help="cutscene: intro, victory, reveal, ability, flyover, dialogue, defeat")
+    m.add_argument("--title", help="cutscene title text")
+    m.add_argument("--effect", help="cutscene: library effect to fire on the beat")
+    m.add_argument("--glow", help="model: glow colour #RRGGBB")
+    m.add_argument("--scale", type=float, help="model/generate size")
     m.add_argument("--root-motion", dest="root_motion", choices=["inplace", "full", "none"])
     m.add_argument("--loop", action="store_true")
     m.add_argument("--mirror", action="store_true")

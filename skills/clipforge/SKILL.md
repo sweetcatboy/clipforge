@@ -1,6 +1,6 @@
 ---
 name: clipforge
-description: Make Roblox animations and VFX from social-media videos (YouTube, Shorts, TikTok, Instagram Reels, X/Twitter, Reddit, Twitch clips, a local video file) or from a text description, using ClipForge (bot server + Roblox Studio plugin). Use for "turn this TikTok/YouTube dance into a Roblox animation", "make a VFX like this video", "make a huge purple lightning slash effect", setting up or fixing ClipForge, its bot server, the Studio plugin, Bot Link, or connecting a Discord/AI bot to it.
+description: Make Roblox animations, VFX, generated showcase VFX, cutscenes and weapon/prop models from social-media videos (YouTube, Shorts, TikTok, Instagram Reels, X/Twitter, Reddit, Twitch clips, a local video file) or from a text description, using ClipForge (bot server + Roblox Studio plugin with a 100-effect library). Use for "turn this TikTok/YouTube dance into a Roblox animation", "make a VFX like this video", "make a huge purple lightning slash effect", "generate a golden cube with wings", "make a boss intro cutscene", "copy the camera work of this trailer", "make a glowing katana", setting up or fixing ClipForge, its bot server, the Studio plugin, Bot Link, or connecting a Discord/AI bot to it.
 ---
 
 # ClipForge
@@ -9,8 +9,9 @@ ClipForge has three parts:
 
 - a local **bot server** (Python) that downloads clips, tracks body pose and reads VFX;
 - a **Roblox Studio plugin** that builds the results in the user's place;
-- **MCP tools**: `clipforge_from_video`, `clipforge_vfx_from_prompt`, `clipforge_job_status`, `clipforge_list_jobs`,
-  `clipforge_presets`.
+- **MCP tools**: `clipforge_from_video`, `clipforge_vfx_from_prompt`, `clipforge_generate_vfx`,
+  `clipforge_make_cutscene`, `clipforge_make_model`, `clipforge_job_status`, `clipforge_list_jobs`,
+  `clipforge_presets` (everything Studio can build: the 100 effects, generator options, cutscene templates, models).
 
 Windows only.
 
@@ -65,7 +66,24 @@ Invoke-RestMethod "http://127.0.0.1:7313/api/jobs/$($job.id)?wait=240"     # lon
 - **From a clip:** `kind` is `animation` (body motion), `vfx` (the effect in it) or `both`. Body tracking runs at
   roughly real time on a CPU: a 15 s clip takes about 0.5-2 min, so tell the user it is working.
 - **From a description:** `{ "prompt": "huge purple lightning slash", "kind": "vfx" }` returns in about a second.
-  A prompt next to a `source` steers the VFX read ("make it purple", "slash").
+  It picks from the 100-effect library (an effect named outright wins: "coin burst", "chain lightning", "level up";
+  then the closest kind) and recolours it from colour or element words ("ice slam" = an icy ground slam; an effect
+  keeps its own colours when the words describe it, as in "poison cloud"). A prompt next to a `source` steers the
+  VFX read ("make it purple", "slash").
+- **Generated showcase VFX:** `{ "kind": "generate", "prompt": "golden glowing cube with light wings" }`. It composes
+  a hero (glowing cube, wireframe cube, crystal, orb) with frames (orbit rings, wings, heart, halo, rune circle),
+  energy (light shafts, rays, lightning arcs, swirl) and atmosphere (nebula, stars, floating squares, petals,
+  leaves, smoke, embers), or an impact or black-hole vortex. `options`: `mode` (`showcase`/`impact`/`vortex`),
+  `chromatic` (rainbow RGB-split fringes), `seed` (another variation of the same idea: use the last seed + 1).
+  Use it for portfolio/showcase pieces and big set pieces; use `vfx` for ordinary attacks and elements.
+- **Cutscenes:** `{ "kind": "cutscene", "prompt": "boss intro \"You dare challenge me?\"" }` picks a template (boss
+  intro, victory, dramatic reveal, ability showcase, map flyover, dialogue, defeat); quoted text becomes dialogue;
+  an effect named in the words fires on the beat. With a `source` clip it copies the clip's cuts, camera moves,
+  shot sizes, shake, flashes and fades instead (takes about as long as the clip). `options`: `who` (the actor
+  the shots film, default `Target`), `template`, `title`, `effect`, `start`/`end`.
+- **Models:** `{ "kind": "model", "prompt": "glowing purple katana" }`: sword, katana, greatsword, dagger, axe,
+  spear, staff, wand, scythe, hammer, shield, magic orb, crystal cluster, rock, meteor, portal, rune totem; `options`
+  `style` (steel, dark, gold, crystal, energy, wood), `glow` (#RRGGBB), `scale`.
 - Turn the user's words into `options`:
 
 | User says | options |
@@ -94,8 +112,16 @@ Results go to:
   `Recolor` and `Recipes`. In a LocalScript:
   `require(game.ReplicatedStorage.ClipForge.FX).play("<Name>", cframe)`.
 - **Animation:** `ServerStorage.ClipForge.Animations.<Name>`, a KeyframeSequence. `MotionData` holds the raw motion for
-  re-baking. A copy goes to `ServerStorage.RBX_ANIMSAVES.<rig>` for the Animation Editor. The plugin's
-  **Animations > Publish** uploads it and returns an asset id.
+  re-baking (long clips are split into `Part1`, `Part2`... children). A copy goes to
+  `ServerStorage.RBX_ANIMSAVES.<rig>` for the Animation Editor. The plugin's **Anim > Publish** uploads it and returns
+  an asset id. A clip with both an animation and a VFX also gets an ability in
+  `ReplicatedStorage.ClipForge.Abilities` that fires the effect on the detected hit.
+- **Generated VFX:** a config module in `ReplicatedStorage.ClipForge.Effects` like any effect (plays with `FX.play`).
+- **Cutscene:** `ReplicatedStorage.ClipForge.Cutscenes.<Name>`. It also opens in the plugin's **Scenes** tab for
+  preview. In a LocalScript:
+  `require(game.ReplicatedStorage.ClipForge.Cutscene).play("<Name>", { actors = { Target = workspace.Boss } })`.
+- **Model:** built in the workspace where the camera looks. The **Models** tab attaches it to a rig, makes it a Tool
+  (StarterPack) or saves it to `ReplicatedStorage.ClipForge.Models`.
 
 If the Roblox Studio MCP is connected, you may check that the instances exist (read only). Ask before changing
 the user's place.
@@ -112,7 +138,13 @@ Say what was made, its name and where it is in Studio. For VFX, also give:
 For animations, also give the duration, the key count and `quality.detectedRatio`. Below 0.8, suggest a clip where
 the whole body stays in frame.
 
-If the job's `delivered` flag is false, remind the user to turn on Bot Link in Studio.
+For generated VFX, models and prompt cutscenes, the job `message` already says what was made (mode and layers;
+style, type and glow; template, lines and effect): repeat it plainly. For a cutscene from a clip, list the shots
+(`summary.cutscene` / the result's `analysis.shots`: time, move, size) and the counts of flashes, shakes and fades.
+
+If the job's `delivered` flag is false, remind the user to turn on Bot Link in Studio. If it has a `buildError`,
+Studio tried and failed: give the error, suggest updating the Studio plugin (`/clipforge:studio install`), then
+**Build here** on the job in the plugin's Bots tab.
 
 ## 5. Troubleshooting
 
@@ -124,11 +156,14 @@ If the job's `delivered` flag is false, remind the user to turn on Bot Link in S
 | Port 7313 busy | Another server is running (fine), or set `CLIPFORGE_PORT` and the plugin's server address to match. |
 | MediaPipe import fails with a missing module | Path too long: the venv must stay in `CF_HOME` (short path). Re-run setup. |
 | Effect looks too small or big, or too fast | Rerun with `scale`/`speed`, or edit the numbers in the effect's config module. |
+| Job done but `buildError` / "Paused" | Studio could not build it (an older plugin retries forever, so the server pauses a job after 3 failed builds). Update the plugin, then press **Build here** on the job (it always retries). |
+| A cutscene films the wrong spot | Its shots follow the actor named `who` (default `Target`): play it with `actors = { Target = <model> }`, or select the model in the Scenes tab and press Use selection. |
 
 ## 6. Bots
 
-- Any bot posts to `POST /api/jobs` (fields in `ROOT\README.md`). `ROOT\examples\discord_bot.py` is a ready-made
-  Discord bot with `!clip`, `!anim` and `!vfx`.
+- Any bot posts to `POST /api/jobs` (fields in `ROOT\README.md`; options listed by `GET /api/catalog`).
+  `ROOT\examples\discord_bot.py` is a ready-made Discord bot with `!clip`, `!anim`, `!vfx`, `!gen`, `!cutscene` and
+  `!model`.
 - Bots on another machine need `start-server.ps1 -Public` and `Authorization: Bearer <CF_HOME\data\bot_token.txt>`.
 - Requests that carry a browser `Origin` header are refused, so a website can't drive the server.
 

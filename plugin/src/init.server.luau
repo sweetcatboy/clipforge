@@ -21,8 +21,16 @@ local Bridge = require(root.Bridge)
 local Installer = require(root.Installer)
 local Prompt = require(root.Prompt)
 local Recolor = require(root.Recolor)
+local Generator = require(root.Generator)
+local ModelKit = require(root.ModelKit)
+local Cutscene = require(root.Cutscene)
+local Abilities = require(root.Abilities)
+local TabLibrary = require(root.TabLibrary)
+local TabModels = require(root.TabModels)
+local TabScenes = require(root.TabScenes)
+local TabSettings = require(root.TabSettings)
 
-local VERSION = "1.0.0"
+local VERSION = "1.1.0"
 
 -- settings ---------------------------------------------------------------------------------------------------------
 local function setting(key, default)
@@ -36,6 +44,9 @@ local function saveSetting(key, v)
 	pcall(plugin.SetSetting, plugin, "ClipForge_" .. key, v)
 end
 
+-- the saved look (theme, accent, text size, density) applies before anything is drawn
+TabSettings.load({ UI = UI, Recolor = Recolor, setting = setting })
+
 Bridge.url = setting("ServerUrl", "http://127.0.0.1:7313")
 Bridge.token = setting("Token", "")
 
@@ -45,6 +56,7 @@ local state = {
 	previewOnBuild = setting("PreviewOnBuild", true),
 	mine = {}, -- job ids submitted from this window
 	claimed = {},
+	failed = {}, -- job id -> build error: not retried by itself (Build here retries)
 	jobs = {},
 	fxHandle = nil,
 	fxLoop = false,
@@ -131,27 +143,50 @@ content.BackgroundTransparency = 1
 content.Parent = bg
 
 local pages, tabButtons = {}, {}
+local currentTab = "Create"
 local function selectTab(name)
+	if not pages[name] then
+		name = "Create"
+	end
+	currentTab = name
 	for n, page in pages do
 		page.Visible = n == name
 	end
 	for n, b in tabButtons do
 		local on = n == name
 		b.BackgroundTransparency = if on then 0 else 1
-		b.BackgroundColor3 = UI.ACCENT
-		b.TextColor3 = if on then Color3.new(1, 1, 1) else UI.color("text")
+		b.BackgroundColor3 = UI.accent()
+		b.TextColor3 = if on then UI.color("onAccent") else UI.color("text")
+		local icon = b:FindFirstChild("Icon")
+		if icon then
+			icon.ImageColor3 = b.TextColor3
+		end
 	end
 	saveSetting("Tab", name)
 end
-for i, name in { "Create", "Library", "Animations", "Bots" } do
+local TABS = { { "Create", "Create" }, { "VFX", "VFX" }, { "Animations", "Anim" }, { "Scenes", "Scenes" }, { "Models", "Models" },
+	{ "Bots", "Bots" }, { "Settings", "" } }
+for i, pair in TABS do
+	local name = pair[1]
 	local b = Instance.new("TextButton")
 	b.AutoButtonColor = false
 	b.Size = UDim2.new(0, 10, 1, 0)
-	b.Text = name
+	b.Text = pair[2]
 	b.FontFace = UI.FONT_MED
-	b.TextSize = 14
+	UI.textSize(b, 13)
 	b.LayoutOrder = i
 	UI.corner(b, 6)
+	if name == "Settings" then
+		-- a real icon (the gear glyph falls back to a colour emoji that ignores the theme)
+		local icon = Instance.new("ImageLabel")
+		icon.Name = "Icon"
+		icon.BackgroundTransparency = 1
+		icon.Image = "rbxasset://textures/ui/Settings/MenuBarIcons/GameSettingsTab@2x.png"
+		icon.Size = UDim2.fromOffset(16, 16)
+		icon.AnchorPoint = Vector2.new(0.5, 0.5)
+		icon.Position = UDim2.fromScale(0.5, 0.5)
+		icon.Parent = b
+	end
 	b.Parent = tabBar
 	tabButtons[name] = b
 	local page = UI.scroll(content)
@@ -161,8 +196,8 @@ for i, name in { "Create", "Library", "Animations", "Bots" } do
 		selectTab(name)
 	end)
 end
-settings().Studio.ThemeChanged:Connect(function()
-	selectTab(setting("Tab", "Create"))
+UI.onTheme(function()
+	selectTab(currentTab)
 end)
 
 -- shared helpers ---------------------------------------------------------------------------------------------------
@@ -184,7 +219,19 @@ local function record(name, fn)
 	end
 end
 
-local function cameraGround(): Vector3
+-- a weapon/prop built by ClipForge (or a part of one)
+local function isClipForgeModel(x: Instance): boolean
+	local m = if x:IsA("Model") then x else x:FindFirstAncestorOfClass("Model")
+	while m do
+		if m:GetAttribute("ClipForgeModel") then
+			return true
+		end
+		m = m:FindFirstAncestorOfClass("Model")
+	end
+	return false
+end
+
+local function cameraGround(skipModels: boolean?): Vector3
 	local cam = workspace.CurrentCamera
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
@@ -192,6 +239,13 @@ local function cameraGround(): Vector3
 	local rig = workspace:FindFirstChild("ClipForgeRig")
 	if rig then
 		table.insert(ignore, rig)
+	end
+	if skipModels then -- look through ClipForge's own models to the ground
+		for _, c in workspace:GetChildren() do
+			if c:IsA("Model") and c:GetAttribute("ClipForgeModel") then
+				table.insert(ignore, c)
+			end
+		end
 	end
 	params.FilterDescendantsInstances = ignore
 	local hit = workspace:Raycast(cam.CFrame.Position, cam.CFrame.LookVector * 500, params)
@@ -204,7 +258,9 @@ local function cameraGround(): Vector3
 end
 
 -- where previews play: the selected part/model, else where the camera looks; facing away from the camera
-local function previewOrigin(): CFrame
+-- Where previews and builds go: the selected part/model, else where the camera looks. skipModels: ignore
+-- ClipForge's own weapons/props (so a new model is not placed on top of the one just built and selected).
+local function previewOrigin(skipModels: boolean?): CFrame
 	local cam = workspace.CurrentCamera
 	local look = cam.CFrame.LookVector
 	local flat = Vector3.new(look.X, 0, look.Z)
@@ -213,6 +269,9 @@ local function previewOrigin(): CFrame
 	end
 	local pos
 	for _, s in Selection:Get() do
+		if skipModels and isClipForgeModel(s) then
+			continue
+		end
 		if s:IsA("BasePart") then
 			pos = s.Position
 			break
@@ -221,7 +280,7 @@ local function previewOrigin(): CFrame
 			break
 		end
 	end
-	pos = pos or cameraGround()
+	pos = pos or cameraGround(skipModels)
 	return CFrame.lookAt(pos, pos + flat.Unit)
 end
 
@@ -318,14 +377,17 @@ local activityViews = {}
 local setStatus
 
 -- building finished jobs -------------------------------------------------------------------------------------------
-local function buildJob(job)
+local function buildJob(job, manual: boolean?)
 	if state.claimed[job.id] then
 		return
 	end
 	state.claimed[job.id] = true
-	local okC = Bridge.request("POST", "/api/jobs/" .. job.id .. "/claim", { studio = game.Name })
+	local okC, why = Bridge.request("POST", "/api/jobs/" .. job.id .. "/claim", { studio = game.Name, force = manual == true })
 	if not okC then
-		return -- another Studio window took it
+		if manual then
+			setStatus(tostring(why), UI.WARN)
+		end
+		return -- another Studio window took it (or it is paused after failing)
 	end
 	local ok, res = Bridge.result(job.id)
 	if not ok or type(res) ~= "table" then
@@ -338,8 +400,13 @@ local function buildJob(job)
 			if res.vfx then
 				local cfg = res.vfx
 				cfg.name = cfg.name or res.name or "ClipEffect"
+				local entry = cfg.base and FX.Library.byId[cfg.base]
+				if cfg.shake == nil and entry and entry.shake then
+					cfg.shake = entry.shake -- library effects keep their camera shake
+				end
 				local mod = Installer.saveEffect(cfg)
 				paths.vfx = mod:GetFullName()
+				res._vfxName = mod.Name
 				focus = mod
 				if state.previewOnBuild and not res.animation then
 					local live = FX.deepCopy(cfg)
@@ -360,15 +427,53 @@ local function buildJob(job)
 				if state.previewOnBuild then
 					Anim.preview(rig, kfs, true)
 				end
+				-- a clip with both: an ability that fires the effect at the clip's detected hit
+				local timing = res.vfx and res.vfx.analysis and res.vfx.analysis.timing
+				if res._vfxName and timing and timing.peak then
+					local ab = Installer.saveAbility({ name = kfs.Name .. "Ability", animation = "rbxassetid://0", keyframes = kfs.Name,
+						hits = { { at = timing.peak, effect = res._vfxName, attach = "Front" } } })
+					paths.ability = ab:GetFullName()
+				end
+			end
+			if res.cutscene then
+				local cs = res.cutscene
+				if not cs.shots then -- from a prompt: the server chose the template, lines and effect
+					cs = Cutscene.template(cs.template or "intro", { who = cs.who, lines = cs.lines, effect = cs.effect,
+						name = cs.name, title = cs.title, sub = cs.sub })
+				end
+				local m = Installer.saveCutscene(cs)
+				paths.cutscene = m:GetFullName()
+				focus = focus or m
+				if state.loadCutscene then
+					state.loadCutscene(cs) -- ready to preview in the Scenes tab
+				end
+			end
+			if res.model then
+				local model = ModelKit.build(res.model)
+				local isProp = model:GetAttribute("ClipForgeKind") == "prop"
+				model:PivotTo(previewOrigin(true) * CFrame.new(0, if isProp then 0 else 3, 0)
+					* (if isProp then CFrame.identity else CFrame.Angles(0, 0, math.rad(-20))))
+				for _, part in model:GetDescendants() do
+					if part:IsA("BasePart") then
+						part.Anchored = true -- on display until attached to a rig or made a Tool
+					end
+				end
+				model.Parent = workspace
+				paths.model = model:GetFullName()
+				focus = focus or model
 			end
 		end)
 	end)
 	if not okB then
-		setStatus("Build failed: " .. tostring(err), UI.BAD)
-		Bridge.request("POST", "/api/jobs/" .. job.id .. "/claim", { release = true })
+		-- report it once and stop: retrying on every poll would loop forever on the same error
+		local msg = string.gsub(tostring(err), "^[%w%._]+:%d+: ", "")
+		setStatus("Build failed: " .. msg .. " (press Build here to try again)", UI.BAD)
+		Bridge.request("POST", "/api/jobs/" .. job.id .. "/claim", { release = true, error = msg })
 		state.claimed[job.id] = nil
+		state.failed[job.id] = msg
 		return
 	end
+	state.failed[job.id] = nil
 	Bridge.delivered(job.id, { studio = game.Name, paths = paths })
 	if focus then
 		Selection:Set({ focus })
@@ -417,7 +522,8 @@ local function makeActivity(parent, onlyMine: boolean)
 				r.acts = acts
 				UI.button(acts, "Build here", "secondary", function()
 					state.claimed[job.id] = nil
-					buildJob(job)
+					state.failed[job.id] = nil
+					buildJob(job, true)
 				end, 100)
 				UI.button(acts, "Dismiss", "ghost", function()
 					Bridge.cancel(job.id)
@@ -431,11 +537,14 @@ local function makeActivity(parent, onlyMine: boolean)
 			local who = if job.client and job.client ~= "studio" then ("  •  from " .. job.client) else ""
 			r.title.Text = string.format("%s  <font transparency=\"0.4\">%s%s</font>", job.name ~= "" and job.name or (job.source or job.prompt or job.id), kind, who)
 			local color = if job.status == "failed" then UI.BAD elseif job.status == "done" then UI.OK else UI.ACCENT
-			r.bar.set(job.progress or 0, color)
 			local msg = job.error or job.message or ""
 			if job.status == "done" and job.delivered then
 				msg = "In your place" .. (if job.deliveredInfo and job.deliveredInfo.studio then " (" .. job.deliveredInfo.studio .. ")" else "")
+			elseif job.status == "done" and (state.failed[job.id] or job.buildError) then
+				msg = "Could not build: " .. tostring(state.failed[job.id] or job.buildError)
+				color = UI.BAD
 			end
+			r.bar.set(job.progress or 0, color)
 			r.msg.Text = (STATUS_TEXT[job.status] or job.status) .. (if msg ~= "" then "  –  " .. msg else "")
 			r.acts.Visible = job.status == "done" and not job.delivered
 		end
@@ -513,7 +622,7 @@ do
 		end)
 	end
 	paintChips()
-	settings().Studio.ThemeChanged:Connect(paintChips)
+	UI.onTheme(paintChips)
 	local steer = UI.input(vfxCard, "Steer it (optional): \"make it purple\", \"slash\"")
 
 	local go = UI.button(create, "Generate", "primary")
@@ -575,253 +684,38 @@ function setStatus(text, color)
 end
 
 ----------------------------------------------------------------------------------------------------------------------
--- LIBRARY tab
+-- shared context for the tab modules
 ----------------------------------------------------------------------------------------------------------------------
-local library = pages.Library
-do
-	local lib = state.lib
-	local promptCard = UI.card(library, "Describe an effect")
-	local promptBox = UI.input(promptCard, "huge purple lightning slash, small holy heal…")
-	local controls = {}
-
-	local function currentConfig()
-		return {
-			name = if trim(controls.nameBox and controls.nameBox.Text or "") ~= "" then trim(controls.nameBox.Text) else (FX.BaseInfo[lib.base].title:gsub("%s", "")),
-			base = lib.base,
-			palette = lib.palette,
-			scale = lib.scale,
-			speed = lib.speed,
-			intensity = 1,
-			roll = if lib.base == "slash" then lib.roll else 0,
-			yaw = 0,
-			parts = lib.parts or { { base = lib.base, t = 0 } },
-		}
-	end
-
-	local function preview()
-		previewEffect(currentConfig(), controls.loop and controls.loop.get())
-	end
-
-	local paletteViews = {}
-	local function showPalette()
-		local p = lib.palette
-		for role, v in paletteViews do
-			local hex = p and p[role]
-			if hex then
-				v.swatch.BackgroundColor3 = Recolor.hexToColor(hex) or Color3.new(1, 1, 1)
-				v.box.Text = hex
-			else
-				v.swatch.BackgroundColor3 = UI.color("field")
-				v.box.Text = ""
-			end
+local AnimationClipProvider = game:GetService("AnimationClipProvider")
+local ctx = {
+	UI = UI, FX = FX, Anim = Anim, Bridge = Bridge, Installer = Installer, Prompt = Prompt, Recolor = Recolor,
+	Generator = Generator, ModelKit = ModelKit, Cutscene = Cutscene, Abilities = Abilities,
+	state = state, plugin = plugin, version = VERSION,
+	setting = setting, saveSetting = saveSetting, record = record,
+	previewEffect = previewEffect, stopEffectPreview = stopEffectPreview, previewOrigin = previewOrigin,
+	currentRig = currentRig, spawnRig = spawnRig,
+	setStatus = function(...)
+		setStatus(...)
+	end,
+	-- cutscene/ability previews: a KeyframeSequence name from ServerStorage.ClipForge.Animations -> a temporary id
+	resolveAnimation = function(ref)
+		local folder = ServerStorage:FindFirstChild("ClipForge") and ServerStorage.ClipForge:FindFirstChild("Animations")
+		local kfs = folder and folder:FindFirstChild(tostring(ref))
+		if kfs then
+			local ok, id = pcall(AnimationClipProvider.RegisterAnimationClip, AnimationClipProvider, kfs)
+			return if ok then id else nil
 		end
-	end
+		return ref
+	end,
+}
 
-	local makeRow = UI.row(promptCard, 6, 32)
-	UI.button(makeRow, "Make it", "primary", function()
-		local cfg = Prompt.parse(promptBox.Text)
-		lib.base = cfg.base
-		lib.palette = cfg.palette
-		lib.scale = cfg.scale
-		lib.speed = cfg.speed
-		lib.roll = cfg.roll ~= 0 and cfg.roll or lib.roll
-		lib.parts = cfg.parts
-		if controls.nameBox then
-			controls.nameBox.Text = cfg.name
-		end
-		if controls.refresh then
-			controls.refresh()
-		end
-		showPalette()
-		preview()
-	end, 110)
-	UI.dim(makeRow, "Works offline.", 12).Size = UDim2.new(1, -120, 1, 0)
-
-	-- base effects grid
-	local baseCard = UI.card(library, "Base effects")
-	UI.dim(baseCard, "Built from studied pro effects (layered flashes, flipbooks, rings, ink twins, smoke). Click to preview.")
-	local gridFrame = UI.frame(baseCard)
-	local g = Instance.new("UIGridLayout")
-	g.CellSize = UDim2.new(0.5, -4, 0, 46)
-	g.CellPadding = UDim2.new(0, 8, 0, 8)
-	g.SortOrder = Enum.SortOrder.LayoutOrder
-	g.Parent = gridFrame
-	local baseButtons = {}
-	local function paintBases()
-		for b, btn in baseButtons do
-			local on = b == lib.base
-			btn.stroke.Color = if on then UI.ACCENT else UI.color("border")
-			btn.stroke.Thickness = if on then 2 else 1
-		end
-	end
-	for i, base in FX.Bases do
-		local info = FX.BaseInfo[base]
-		local b = Instance.new("TextButton")
-		b.AutoButtonColor = false
-		b.Text = ""
-		b.LayoutOrder = i
-		UI.bind(b, "BackgroundColor3", "field")
-		UI.corner(b, 7)
-		local s = Instance.new("UIStroke")
-		s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		s.Parent = b
-		b.Parent = gridFrame
-		local t = UI.label(b, "<b>" .. info.title .. "</b>", { TextSize = 13, Position = UDim2.new(0, 8, 0, 4), Size = UDim2.new(1, -16, 0, 16), AutomaticSize = Enum.AutomaticSize.None })
-		t.Parent = b
-		-- the recipe's own colours as a strip
-		local strip = Instance.new("Frame")
-		strip.BackgroundTransparency = 1
-		strip.Position = UDim2.new(0, 8, 0, 26)
-		strip.Size = UDim2.new(1, -16, 0, 10)
-		strip.Parent = b
-		local sl = UI.list(strip, 3, true)
-		sl.HorizontalFlex = Enum.UIFlexAlignment.Fill
-		pcall(function()
-			local pal = FX.recipe(base).palette or {}
-			local cols = {}
-			for _, hex in pal do
-				local c = Recolor.hexToColor(hex)
-				if c then
-					table.insert(cols, c)
-				end
-			end
-			table.sort(cols, function(a, c)
-				local _, _, va = a:ToHSV()
-				local _, _, vc = c:ToHSV()
-				return va > vc
-			end)
-			for k = 1, math.min(#cols, 6) do
-				local sw = Instance.new("Frame")
-				sw.BorderSizePixel = 0
-				sw.Size = UDim2.new(0, 8, 1, 0)
-				sw.BackgroundColor3 = cols[k]
-				sw.LayoutOrder = k
-				UI.corner(sw, 3)
-				sw.Parent = strip
-			end
-		end)
-		baseButtons[base] = { button = b, stroke = s }
-		b.Activated:Connect(function()
-			lib.base = base
-			lib.parts = nil
-			paintBases()
-			if controls.refresh then
-				controls.refresh()
-			end
-			preview()
-		end)
-	end
-	paintBases()
-	settings().Studio.ThemeChanged:Connect(paintBases)
-
-	-- colours
-	local colorCard = UI.card(library, "Colours")
-	local presetFrame = UI.frame(colorCard)
-	local pg = Instance.new("UIGridLayout")
-	pg.CellSize = UDim2.new(0.25, -5, 0, 24)
-	pg.CellPadding = UDim2.new(0, 5, 0, 5)
-	pg.SortOrder = Enum.SortOrder.LayoutOrder
-	pg.Parent = presetFrame
-	for i, preset in Recolor.Presets do
-		local b = Instance.new("TextButton")
-		b.AutoButtonColor = false
-		b.Text = preset.name
-		b.FontFace = UI.FONT_MED
-		b.TextSize = 12
-		b.LayoutOrder = i
-		UI.corner(b, 5)
-		if preset.palette then
-			local c = Recolor.hexToColor(preset.palette.primary)
-			b.BackgroundColor3 = c
-			local _, _, v = c:ToHSV()
-			b.TextColor3 = if v > 0.75 and preset.name ~= "Void" and preset.name ~= "Blood" then Color3.new(0.08, 0.08, 0.1) else Color3.new(1, 1, 1)
-		else
-			UI.bind(b, "BackgroundColor3", "field")
-			UI.bind(b, "TextColor3", "text")
-		end
-		b.Parent = presetFrame
-		b.Activated:Connect(function()
-			lib.palette = if preset.palette then FX.deepCopy(preset.palette) else nil
-			showPalette()
-			preview()
-		end)
-	end
-	for _, role in { "core", "primary", "secondary", "deep" } do
-		local r = UI.row(colorCard, 8, 26)
-		local sw = UI.swatch(r, Color3.new(1, 1, 1), 24)
-		local lab = UI.label(r, string.upper(string.sub(role, 1, 1)) .. string.sub(role, 2), { Size = UDim2.new(0, 70, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextYAlignment = Enum.TextYAlignment.Center })
-		lab.TextSize = 13
-		local box = UI.input(r, "#RRGGBB", "", { Size = UDim2.new(1, -110, 1, 0) })
-		box.FocusLost:Connect(function()
-			local hex = string.upper(trim(box.Text))
-			if string.sub(hex, 1, 1) ~= "#" then
-				hex = "#" .. hex
-			end
-			if Recolor.hexToColor(hex) then
-				lib.palette = lib.palette or { core = "#FFFFFF", primary = "#7FB2FF", secondary = "#C38CFF", deep = "#101830" }
-				lib.palette[role] = hex
-				showPalette()
-			else
-				showPalette()
-			end
-		end)
-		paletteViews[role] = { swatch = sw, box = box }
-	end
-	showPalette()
-
-	-- size & timing
-	local stCard = UI.card(library, "Size & timing")
-	UI.dim(stCard, "Size")
-	local scaleSeg = UI.segmented(stCard, { "0.6", "0.8", "1", "1.3", "1.6", "2" }, "1", function(v)
-		lib.scale = tonumber(v)
-	end)
-	UI.dim(stCard, "Speed")
-	local speedSeg = UI.segmented(stCard, { "0.6", "0.8", "1", "1.2", "1.5" }, "1", function(v)
-		lib.speed = tonumber(v)
-	end)
-	UI.dim(stCard, "Slash angle")
-	local rollSeg = UI.segmented(stCard, { "-45", "-25", "0", "25", "45", "90" }, "-25", function(v)
-		lib.roll = tonumber(v)
-	end)
-	controls.refresh = function()
-		local function nearest(seg, opts, v)
-			local best, bd = opts[1], math.huge
-			for _, o in opts do
-				local d = math.abs(tonumber(o) - v)
-				if d < bd then
-					best, bd = o, d
-				end
-			end
-			seg.set(best)
-		end
-		nearest(scaleSeg, { "0.6", "0.8", "1", "1.3", "1.6", "2" }, lib.scale)
-		nearest(speedSeg, { "0.6", "0.8", "1", "1.2", "1.5" }, lib.speed)
-		nearest(rollSeg, { "-45", "-25", "0", "25", "45", "90" }, lib.roll)
-		paintBases()
-	end
-
-	local playCard = UI.card(library, "Preview & insert")
-	local pr = UI.row(playCard, 6, 32)
-	UI.button(pr, "Preview", "primary", preview, 110)
-	UI.button(pr, "Stop", "secondary", stopEffectPreview, 70)
-	controls.loop = UI.toggle(playCard, "Loop preview", false, function(on)
-		if not on then
-			state.fxLoop = false
-		end
-	end)
-	UI.dim(playCard, "Plays where the camera looks (or on the selected part).", 12)
-	controls.nameBox = UI.input(playCard, "Effect name", "")
-	UI.button(playCard, "Insert into game", "secondary", function()
-		local cfg = currentConfig()
-		local mod
-		record("insert effect " .. cfg.name, function()
-			mod = Installer.saveEffect(cfg, false)
-		end)
-		Selection:Set({ mod })
-		setStatus("Saved " .. mod:GetFullName(), UI.OK)
-	end)
-	UI.dim(playCard, "Saves to ReplicatedStorage.ClipForge.Effects with the runtime. In a LocalScript:\n<font face=\"RobotoMono\">require(game.ReplicatedStorage.ClipForge.FX).play(\"Name\", cframe)</font>", 12)
-end
+----------------------------------------------------------------------------------------------------------------------
+-- VFX tab (generator + library), Cutscenes, Models, Settings
+----------------------------------------------------------------------------------------------------------------------
+TabLibrary.build(pages.VFX, ctx)
+TabScenes.build(pages.Scenes, ctx)
+TabModels.build(pages.Models, ctx)
+TabSettings.build(pages.Settings, ctx)
 
 ----------------------------------------------------------------------------------------------------------------------
 -- ANIMATIONS tab
@@ -877,6 +771,7 @@ do
 			local br = UI.row(item, 5, 28)
 			UI.button(br, "Play", "primary", function()
 				local rig = currentRig(true)
+				state.currentKfs = kfs
 				local ok, err = Anim.preview(rig, kfs, true)
 				if not ok then
 					warn("[ClipForge] " .. tostring(err))
@@ -917,6 +812,42 @@ do
 		end
 	end
 	refreshAnimations()
+
+	local abil = UI.card(animations, "Ability: animation + VFX in sync")
+	UI.dim(abil, "Play an animation above, then choose the effect and when it hits. Abilities save to ReplicatedStorage.ClipForge.Abilities.", 12)
+	local abRow = UI.row(abil, 5, 28)
+	local fxBox = UI.input(abRow, "effect (e.g. groundpound or MyEffect)", "", { Size = UDim2.new(1, -66, 1, 0) })
+	local atBox = UI.input(abRow, "at s", "0.4", { Size = UDim2.new(0, 60, 1, 0) })
+	local attach = UI.chips(abil, { "Front", "Ground", "RightHand", "LeftHand", "Root" }, "Front", nil, { columns = 5 })
+	local function abilityConfig()
+		local kfs = state.currentKfs
+		local effect = trim(fxBox.Text)
+		if effect == "" then
+			effect = "impact"
+		end
+		return {
+			name = (if kfs then kfs.Name else "My") .. "Ability",
+			animation = "rbxassetid://0",
+			keyframes = if kfs then kfs.Name else nil,
+			hits = { { at = tonumber(atBox.Text) or 0.4, effect = effect, attach = attach.get() } },
+		}
+	end
+	local abr = UI.row(abil, 6, 30)
+	UI.button(abr, "Preview", "primary", function()
+		local rig = currentRig(true)
+		if state.currentKfs then
+			Anim.preview(rig, state.currentKfs, false)
+		end
+		Abilities.play(abilityConfig(), rig, { noAnimation = true, parent = workspace.CurrentCamera, important = true })
+	end, 90)
+	UI.button(abr, "Save ability", "secondary", function()
+		local m
+		record("save ability", function()
+			m = Installer.saveAbility(abilityConfig())
+		end)
+		Selection:Set({ m })
+		setStatus("Saved " .. m:GetFullName() .. ". Publish the animation and paste its id into it.", UI.OK)
+	end, 110)
 end
 
 ----------------------------------------------------------------------------------------------------------------------
@@ -1010,7 +941,7 @@ task.spawn(function()
 						pcall(v.update, jobs)
 					end
 					for _, j in jobs do
-						if j.status == "done" and not j.delivered and (state.mine[j.id] or state.botLink) then
+						if j.status == "done" and not j.delivered and not state.failed[j.id] and (state.mine[j.id] or state.botLink) then
 							task.spawn(buildJob, j)
 						end
 					end
