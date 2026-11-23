@@ -88,6 +88,73 @@ def test_router():
         assert got == want, (text, got, p["reason"])
     p = router.plan("glowing katana", kind="animation")  # an explicit kind wins
     assert p["animation"] and not p["model"]
+
+
+def test_router_regressions():
+    """Phrasings that were misread during bug testing."""
+    cases = {
+        "lightning kick": ("animation", "vfx"), "kick with lightning": ("animation", "vfx"),  # element-named effect
+        "cross slash": ("vfx",),           # the longer title (the Cross Slash effect) beats the Cross punch
+        "meteor strike": ("vfx",),         # an effect title, not the meteor model
+        "throw a fireball": ("animation", "vfx"), "bow with petals": ("animation", "vfx"),
+        "fireworks": ("vfx",), "nuke": ("vfx",), "explode": ("vfx",), "snow": ("vfx",),
+        "punching": ("animation", "vfx"), "surprise me": ("generate",),  # like "punch": the move and its impact
+        'boss intro "You dare?"': ("cutscene",), 'npc says "hello"': ("cutscene",), "victory pose": ("animation",),
+    }
+    for text, want in cases.items():
+        p = router.plan(text)
+        got = tuple(k for k in ("animation", "vfx", "generate", "model", "cutscene") if p[k])
+        assert got == want, (text, got, p["reason"])
+    # unclear messages ask instead of building something random
+    for text in ("asdfghjkl", "the", "1234", "make a vfx", "make an animation", "one two", "🔥👊"):
+        p = router.plan(text)
+        assert not any(p[k] for k in ("animation", "vfx", "generate", "model", "cutscene")), (text, p["reason"])
+        assert "Nothing to make" in p["reason"]
+    # one punch is one punch; combos need the word
+    assert text_motion.describe("punch")["moves"] == ["cross"]
+    assert text_motion.describe("punch combo")["moves"] == ["punchcombo"]
+    assert text_motion.describe("fighting idle")["moves"] == ["fightidle"]
+    assert text_motion.describe("jab cross hook uppercut")["moves"] == ["jab", "cross", "hook", "uppercut"]
+    assert text_motion.describe("super saiyan")["moves"] == ["charge"]
+
+
+def test_requests_from_a_real_session():
+    """What a user typed in the Create tab while testing 1.2.0."""
+    from clipforge.jobs import JobStore
+    store = JobStore()
+    pv = store.preview({"prompt": "create me a animation where a player turns into a blackhole"})
+    r = pv["result"]
+    assert r["animation"]["moves"] == ["charge"] and r["vfx"]["base"] == "blackhole", pv["message"]
+    assert r["ability"]["marker"] == "Hit" and len(r["ability"]["at"]) == 1
+    pv = store.preview({"prompt": "create me a animation where they clap then summon a blackhole", "kind": "both"})
+    r = pv["result"]
+    assert r["animation"]["moves"] == ["clap", "cast"], r["animation"]["moves"]
+    # a black hole is a one-off: it fires once, on the last hit, through its own marker, in front
+    assert r["ability"] == {"marker": "Fx", "attach": "Front", "at": [r["animation"]["markers"][-2]["t"]]} or (
+        r["ability"]["marker"] == "Fx" and len(r["ability"]["at"]) == 1 and r["ability"]["attach"] == "Front"), r["ability"]
+    assert sum(1 for m in r["animation"]["markers"] if m["name"] == "Fx") == 1
+    # per-hit effects keep firing on every hit
+    pv = store.preview({"prompt": "jab cross hook with sparks"})
+    assert pv["result"]["ability"]["marker"] == "Hit" and len(pv["result"]["ability"]["at"]) == 3
+    # 'both' with no move in the library still makes the effect, and says so
+    pv = store.preview({"prompt": "a swirling black hole", "kind": "both"})
+    assert pv["result"]["vfx"] and not pv["result"]["animation"] and "only the effect" in pv["message"], pv["message"]
+    # pressing Generate twice makes one job
+    a = store.create({"prompt": "backflip", "client": "studio"})
+    b = store.create({"prompt": "backflip", "client": "studio"})
+    c = store.create({"prompt": "backflip", "client": "discord"})
+    assert a.id == b.id and a.id != c.id
+
+
+def test_options_are_parsed_strictly():
+    assert text_motion.from_prompt("jab", mirror="false")["moves"] == ["jab"]
+    assert text_motion.from_prompt("wave", loop="true")["loop"] is True
+    for bad in ({"speed": "fast"}, {"speed": -1}, {"speed": float("nan")}, {"mirror": "maybe"}):
+        try:
+            text_motion.from_prompt("jab", **bad)
+        except ValueError:
+            continue
+        raise AssertionError(f"accepted {bad}")
     assert "punch" in router.vfx_prompt_for("fire punch", "jab") or "fire" in router.vfx_prompt_for("fire punch", "jab")
 
 

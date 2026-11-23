@@ -279,9 +279,10 @@ plugin/src/        Studio plugin (Luau): init.server.luau, UI, Tab* (VFX, Scenes
                    Bridge, Installer, Prompt, Recolor, Blocks, Library (100 effects), Generator, Cutscene, Abilities,
                    ModelKit, VFXTimeline + Recipes/ (from vfxmith, MIT)
 server/clipforge/  bot server (Python): server, jobs, router (words -> what to make), text_motion (the move
-                   library), fetch, pose, motion, vfx_analyze, prompts, catalog (+ the catalog.json build_plugin.py
-                   writes from the plugin source), cutscene_video, mcp_server
-server/tests/      test_motion, test_vfx, test_catalog, test_cutscene_video, test_text_motion (python tests/<name>.py)
+                   library), words (word forms), fetch, pose, motion, vfx_analyze, prompts, catalog (+ the
+                   catalog.json build_plugin.py writes from the plugin source), cutscene_video, mcp_server
+server/tests/      test_motion, test_vfx, test_catalog, test_cutscene_video, test_text_motion, test_server
+                   (python tests/<name>.py)
 scripts/           build_plugin.py (packs plugin/src into dist/ClipForge.rbxmx, --install; refreshes
                    server/clipforge/catalog.json), clipforge-mcp.cmd
 examples/          discord_bot.py

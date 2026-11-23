@@ -19,6 +19,11 @@ import uuid
 from . import config
 
 KINDS = ("animation", "vfx", "both", "generate", "cutscene", "model", "auto")
+DUPLICATE_WINDOW = 5.0  # seconds: the same request again this soon is a double-click
+# effects that belong on every hit of a move (a spark per punch); anything else (a black hole, an explosion) is a
+# one-off that fires once, on the last hit
+PER_HIT_FX = {"punch", "uppercut", "hitspark", "critical", "slash", "thrust", "spinslash", "parry", "landing", "dash",
+              "pickup", "slashcombo", "xslash", "impact", "punchbarrage", "claw", "bulletimpact", "muzzleflash"}
 NEEDS_PROMPT = ("generate", "model", "auto")
 STATUS_ACTIVE = ("queued", "downloading", "tracking", "analyzing", "building")
 
@@ -67,6 +72,7 @@ class JobStore:
         self.q: queue.Queue[str] = queue.Queue()
         self.changed = threading.Condition(self.lock)
         self.releases: dict[str, list[float]] = {}  # job id -> times a Studio gave it back unbuilt
+        self.recent: dict[str, tuple[str, float]] = {}  # request -> (job id, time): double-clicks make one job
         self._load()
         for i in range(max(1, workers)):
             threading.Thread(target=self._worker, name=f"clipforge-worker-{i}", daemon=True).start()
@@ -114,13 +120,20 @@ class JobStore:
             kind = "both"  # a clip: read both the body motion and the effect
         if not prompt and kind in NEEDS_PROMPT:
             raise ValueError(f"'{kind}' jobs need a 'prompt' describing what to make.")
+        key = json.dumps([kind, source, prompt, payload.get("options") or {}, payload.get("name") or "",
+                          payload.get("client") or ""], sort_keys=True, default=str)
         with self.lock:
+            seen = self.recent.get(key)
+            if seen and _now() - seen[1] < DUPLICATE_WINDOW and seen[0] in self.jobs:
+                return self.jobs[seen[0]]  # pressed twice: the same job, not a second copy in the place
             self.seq += 1
             job = Job(id=uuid.uuid4().hex[:10], seq=self.seq, kind=kind, source=source or None, prompt=prompt or None,
                       options=payload.get("options") or {}, client=(payload.get("client") or "api")[:60],
                       name=_safe_name(payload.get("name") or "", ""), status="queued", progress=0.0,
                       message="Waiting in line", created=_now(), updated=_now())
             self.jobs[job.id] = job
+            self.recent = {k: v for k, v in self.recent.items() if _now() - v[1] < DUPLICATE_WINDOW}
+            self.recent[key] = (job.id, _now())
             self._save(job)
             self.changed.notify_all()
         self.q.put(job.id)
@@ -370,16 +383,24 @@ class JobStore:
         from . import prompts, router, text_motion
 
         plan = router.plan(job.prompt, kind=job.kind)
+        if not any(plan[k] for k in ("animation", "vfx", "generate", "model", "cutscene")):
+            raise ValueError(plan["reason"] or router.NOTHING)
         for other in ("generate", "model", "cutscene"):
             if plan[other]:
                 self._run_prompt(job, result, opts, kind=other, finish=finish)
                 return
-        made, anim = [], None
+        made, anim, notes = [], None, []
         if plan["animation"]:
-            anim = text_motion.from_prompt(job.prompt, (job.name + ("Anim" if plan["vfx"] else "")) if job.name else None,
-                                           speed=opts.get("speed"), mirror=opts.get("mirror"), loop=opts.get("loop"))
-            result["animation"] = anim
-            made.append(f"{_a(anim['description'].lower())} animation ({anim['duration']:.2f} s)")
+            try:
+                anim = text_motion.from_prompt(job.prompt, (job.name + ("Anim" if plan["vfx"] else "")) if job.name else None,
+                                               speed=opts.get("speed"), mirror=opts.get("mirror"), loop=opts.get("loop"))
+            except ValueError as e:
+                if not plan["vfx"] or "No move matched" not in str(e):
+                    raise
+                notes.append("no move in the library matched the words, so only the effect was made")
+            if anim:
+                result["animation"] = anim
+                made.append(f"{_a(anim['description'].lower())} animation ({anim['duration']:.2f} s)")
         if plan["vfx"]:
             vp = router.vfx_prompt_for(job.prompt, anim["moves"][0] if anim else None)
             cfg = prompts.config_from_prompt(vp, (job.name + ("VFX" if anim else "")) if job.name else None)
@@ -387,14 +408,25 @@ class JobStore:
             result["vfx"] = cfg
             made.append(f"{_a(cfg['description'])} effect")
         if anim and plan["vfx"] and anim.get("markers"):
-            fx, attach = text_motion.MOVE_FX.get(anim["moves"][0], ("hitspark", "Front"))
-            result["ability"] = {"marker": "Hit", "attach": attach, "at": [m["t"] for m in anim["markers"]]}
+            fx, attach = text_motion.MOVE_FX.get(anim["moves"][-1], ("hitspark", "Front"))
+            base = result["vfx"].get("base")
+            if attach in ("RightHand", "LeftHand") and base != fx and base not in PER_HIT_FX:
+                attach = "Front"  # a summoned black hole or an explosion goes out in front, not on the hand
+            hits = [m["t"] for m in anim["markers"] if m["name"] == "Hit"]
+            marker, at = "Hit", hits
+            if len(hits) > 1 and base not in PER_HIT_FX:
+                # a one-off effect ("clap then summon a black hole") fires once, on the last hit: its own marker
+                marker, at = "Fx", [hits[-1]]
+                anim["markers"] = anim["markers"] + [{"name": "Fx", "t": hits[-1]}]
+            result["ability"] = {"marker": marker, "attach": attach, "at": at}
             made.append("linked as an ability")
         if not made:
             raise ValueError("Nothing to make from that. Name a move (punch, backflip, wave...) or an effect.")
         job.name = job.name or (anim["name"] if anim else result["vfx"]["name"])
         result["name"] = job.name
-        (finish or self._finish)(job, result, "Made " + ", ".join(made))
+        if notes:
+            result["warnings"] = notes
+        (finish or self._finish)(job, result, "Made " + ", ".join(made) + (f" ({'; '.join(notes)})" if notes else ""))
 
     def _run_prompt(self, job: Job, result: dict, opts: dict, kind: str | None = None, finish=None):
         """Prompt-only kinds: the description Studio will build, worked out here so the bot hears what it gets."""

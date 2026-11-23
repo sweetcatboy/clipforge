@@ -207,7 +207,7 @@ move("idle", "Idle", "idle", "idle stand standing breathe breathing rest wait", 
     K(3.0, "sine"),
 ], loop=True, breath=0.0, blurb="Relaxed standing with breathing and a slow weight shift")
 
-move("fightidle", "Fighting Stance", "idle", "fighting stance guard combat idle boxing ready fight", "fight", [
+move("fightidle", "Fighting Idle", "idle", "fighting stance guard combat idle boxing ready fight battle", "fight", [
     K(0.0),
     K(0.3, "sine", rl=A(knee=30), ll=A(knee=26), ra=A(lift=30), la=A(lift=40), head={"nod": 8}),
     K(0.6, "sine"),
@@ -451,7 +451,7 @@ move("spin", "Spin Attack", "weapon", "spin spinning whirlwind 360 sweep tornado
 ], hit=(0.26, 0.38), lag=0.7, blurb="Full 360 spin with arms out")
 
 # --- powers ----------------------------------------------------------------------------------------------------------
-move("cast", "Spell Cast", "magic", "cast spell magic blast fireball throw magic palm push", "relaxed", [
+move("cast", "Spell Cast", "magic", "cast spell magic blast fireball throw magic palm push summon conjure", "relaxed", [
     K(0.0),
     K(0.16, "out", hips={"yaw": -10}, chest={"turn": -18, "bend": 4}, ra=A(lift=36, swing=34, bend=96, wrist=20), rl=A(knee=14), ll=A(lift=10, knee=12)),
     K(0.25, "snap", hips={"yaw": 8, "pitch": 6, "fwd": 0.06}, chest={"turn": 12, "bend": 8}, head={"nod": -4},
@@ -460,7 +460,7 @@ move("cast", "Spell Cast", "magic", "cast spell magic blast fireball throw magic
     K(0.75, "inout"),
 ], hit=(0.25,), lag=0.6, blurb="Draw back, palm thrust forward, hold the cast")
 
-move("charge", "Power Up", "magic", "charge power up powerup aura transform scream rage focus energy", "relaxed", [
+move("charge", "Power Up", "magic", "charge power up powerup aura transform scream rage focus energy saiyan", "relaxed", [
     K(0.0),
     K(0.3, "out", hips={"pitch": 12}, chest={"bend": 10}, head={"nod": 10},
       ra=A(lift=26, swing=44, bend=64, twist=30), la=A(lift=26, swing=44, bend=64, twist=30),
@@ -882,15 +882,22 @@ def catalog() -> list[dict]:
 
 def match_move(text: str) -> tuple[str | None, float]:
     """Best move (or combo) for some words: the title said outright wins, then tags."""
-    t = " " + (text or "").lower() + " "
+    from .words import normalize
+    t = " " + normalize(text) + " "
     best, best_score = None, 0.0
+    wants_combo = any(_has(t, w) for w in ("combo", "combination", "combos"))
     for m in catalog():
+        if m["id"] in COMBOS and not wants_combo:
+            continue  # "punch" is one punch; a combo needs the word
         title = m["title"].lower()
-        score = 8.0 if _has(t, title) else 0.0
-        words = set(re.findall(r"[a-z0-9]+", m["tags"]))
-        for w in set(re.findall(r"[a-z0-9]+", title)) | words:
+        score = 8.0 if (_has(t, title) or _has(t, title.replace(" ", ""))) else 0.0
+        title_words = set(re.findall(r"[a-z0-9]+", title))
+        for w in title_words:  # a title word ("kick", "roll") is a real match, however short
             if len(w) > 2 and _has(t, w):
-                score += 2 if len(w) > 4 else 1
+                score += 2.5
+        for w in set(re.findall(r"[a-z0-9]+", m["tags"])) - title_words:
+            if len(w) > 2 and _has(t, w):  # short tag words ("two", "hit") only add a little
+                score += 2 if len(w) > 4 else (1 if len(w) > 3 else 0.5)
         if m["id"] in COMBOS and _has(t, "combo"):
             score += 1.5
         if score > best_score:
@@ -900,7 +907,8 @@ def match_move(text: str) -> tuple[str | None, float]:
 
 def describe(prompt: str) -> dict:
     """What a sentence asks for: move(s), speed, power, side, loop."""
-    text = " " + (prompt or "").lower() + " "
+    from .words import normalize
+    text = " " + normalize(prompt) + " "
     speed = next((s for w, s in SPEED_WORDS if _has(text, w)), 1.0)
     power = next((p for w, p in POWER_WORDS if _has(text, w)), 1.0)
     mirror = any(_has(text, w) for w in ("left", "left hand", "left handed", "lefty", "southpaw", "mirrored", "mirror"))
@@ -912,6 +920,13 @@ def describe(prompt: str) -> dict:
             mid, score = match_move(p)
             if mid and score >= 1 and mid not in COMBOS:
                 seq.append(mid)
+    if len(seq) < 2:
+        # a plain list of moves ("jab cross hook uppercut"): the one-word move names, in the order they were said
+        single = {m["title"].lower(): m["id"] for m in MOVES.values() if " " not in m["title"]}
+        single.update({"backflip": "backflip", "frontflip": "frontflip", "punch": "cross", "kick": "kick"})
+        listed = [single[w] for w in re.findall(r"[a-z]+", (prompt or "").lower()) if w in single]
+        if len(listed) >= 2:
+            seq = listed
     if len(seq) >= 2:
         return {"moves": seq, "speed": speed, "power": power, "mirror": mirror, "loop": False, "score": 9.0}
     mid, score = match_move(prompt)
@@ -923,14 +938,41 @@ def describe(prompt: str) -> dict:
     return {"moves": [mid] if mid else [], "speed": speed, "power": power, "mirror": mirror, "loop": loop, "score": score}
 
 
+def _as_bool(v):
+    """Options from bots arrive as JSON booleans, numbers or text ("false" must not mean yes)."""
+    if v is None or v == "":
+        return None
+    if isinstance(v, str):
+        s = v.strip().lower()
+        if s in ("1", "true", "yes", "on", "y"):
+            return True
+        if s in ("0", "false", "no", "off", "n"):
+            return False
+        raise ValueError(f"'{v}' is not true or false")
+    return bool(v)
+
+
+def _as_speed(v):
+    if v is None or v == "":
+        return None
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        raise ValueError("speed must be a number (1 = normal, 2 = twice as fast)") from None
+    if not math.isfinite(f) or f <= 0:
+        raise ValueError("speed must be a positive number")
+    return f
+
+
 def from_prompt(prompt: str, name: str | None = None, speed=None, mirror=None, loop=None) -> dict:
     d = describe(prompt)
+    speed, mirror, loop = _as_speed(speed), _as_bool(mirror), _as_bool(loop)
     if speed:
-        d["speed"] = float(speed)
+        d["speed"] = speed
     if mirror is not None:
-        d["mirror"] = bool(mirror)
+        d["mirror"] = mirror
     if loop is not None:
-        d["loop"] = bool(loop)
+        d["loop"] = loop
     if not d["moves"]:
         raise ValueError("No move matched. Try words like punch, kick, slash, jump, run, wave, dance, cheer, cast, beam.")
     title_words = [w.capitalize() for w in re.findall(r"[A-Za-z]+", prompt or "") if len(w) > 2][:4]

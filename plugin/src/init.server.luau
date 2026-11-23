@@ -30,7 +30,7 @@ local TabModels = require(root.TabModels)
 local TabScenes = require(root.TabScenes)
 local TabSettings = require(root.TabSettings)
 
-local VERSION = "1.2.0"
+local VERSION = "1.2.1"
 
 -- settings ---------------------------------------------------------------------------------------------------------
 local function setting(key, default)
@@ -653,10 +653,24 @@ do
 
 	local go = UI.button(create, "Generate", "primary")
 	createStatus = UI.dim(create, "")
+	-- one press, one job: the button is busy while it sends, and the same request again right away is not resent
+	local sending, lastSent, lastSentAt = false, nil, 0
+	local function setBusy(on: boolean)
+		sending = on
+		go.Text = if on then "Sending…" else "Generate"
+	end
 	go.Activated:Connect(function()
+		if sending then
+			return
+		end
 		local s = trim(src.Text)
 		if s == "" then
 			setStatus("Paste a link or a file path, or describe a move or an effect.", UI.WARN)
+			return
+		end
+		local signature = s .. "|" .. tostring(kind.get()) .. "|" .. trim(nameBox.Text)
+		if signature == lastSent and os.clock() - lastSentAt < 8 then
+			setStatus("Already making that one: it builds itself in a moment (see Activity). Change the words to make another.", UI.WARN)
 			return
 		end
 		-- a link or a video file goes to the video pipeline; anything else is a description
@@ -665,9 +679,11 @@ do
 			or string.match(lower, "%.mp4$") ~= nil or string.match(lower, "%.mov$") ~= nil or string.match(lower, "%.webm$") ~= nil
 			or string.match(lower, "%.mkv$") ~= nil
 		setStatus("Connecting to the bot server…")
+		setBusy(true)
 		task.spawn(function()
 			local okH = Bridge.connected or Bridge.health()
 			if not okH then
+				setBusy(false)
 				setStatus(Bridge.lastError or "Bot server not reachable", UI.BAD)
 				return
 			end
@@ -705,8 +721,10 @@ do
 				payload.name = trim(nameBox.Text)
 			end
 			local ok, job = Bridge.submit(payload)
+			setBusy(false)
 			if ok then
 				state.mine[job.id] = true
+				lastSent, lastSentAt = signature, os.clock()
 				setStatus("Queued. You can keep working; it builds itself when ready.", UI.OK)
 				state.lastPoll = 0
 			else

@@ -5,8 +5,11 @@ from __future__ import annotations
 import hmac
 import ipaddress
 import json
+import math
 import mimetypes
+import sys
 import threading
+import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -176,8 +179,48 @@ class Handler(BaseHTTPRequestHandler):
         parts = [p for p in u.path.split("/") if p]
         return parts, {k: v[-1] for k, v in parse_qs(u.query).items()}
 
+    @staticmethod
+    def _num(q, key, default, cast=int, lo=None, hi=None):
+        """A query number, checked: bad values are a 400, not a dropped connection (and never NaN/inf)."""
+        raw = q.get(key)
+        if raw in (None, ""):
+            return default
+        try:
+            v = cast(raw)
+        except (TypeError, ValueError):
+            raise ValueError(f"'{key}' must be a number") from None
+        if isinstance(v, float) and not math.isfinite(v):
+            raise ValueError(f"'{key}' must be a finite number")
+        if lo is not None:
+            v = max(lo, v)
+        if hi is not None:
+            v = min(hi, v)
+        return v
+
+    def _safely(self, handler):
+        """Every request gets an answer: bad input is a 400, anything unexpected a 500 (logged here)."""
+        try:
+            handler()
+        except ValueError as e:
+            self._err(400, str(e))
+        except Exception as e:  # noqa: BLE001
+            traceback.print_exc()
+            try:
+                self._err(500, f"Server error: {e}")
+            except Exception:
+                pass
+
     # --- verbs ----------------------------------------------------------------------------------------------------
     def do_GET(self):
+        self._safely(self._get)
+
+    def do_POST(self):
+        self._safely(self._post)
+
+    def do_DELETE(self):
+        self._safely(self._delete)
+
+    def _get(self):
         parts, q = self._route()
         if not parts:
             page = LANDING.replace("__VERSION__", config.VERSION).replace("__PORT__", str(self.server.server_address[1]))
@@ -197,14 +240,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, catalog.summary())
         if parts[1:2] == ["jobs"]:
             if len(parts) == 2:
-                jobs = STORE.list(since=int(q.get("since") or 0), status=q.get("status"),
-                                  undelivered=q.get("undelivered") in ("1", "true"), limit=int(q.get("limit") or 50))
+                jobs = STORE.list(since=self._num(q, "since", 0, lo=0), status=q.get("status"),
+                                  undelivered=q.get("undelivered") in ("1", "true"),
+                                  limit=self._num(q, "limit", 50, lo=1, hi=1000))
                 return self._send(200, {"jobs": jobs, "seq": STORE.seq})
             job = STORE.get(parts[2])
             if not job:
                 return self._err(404, "No such job")
             if len(parts) == 3:
-                wait = min(float(q.get("wait") or 0), 300.0)
+                wait = self._num(q, "wait", 0.0, cast=float, lo=0.0, hi=300.0)
                 if wait > 0:
                     job = STORE.wait_for(job.id, wait) or job
                 return self._send(200, job.to_dict())
@@ -220,7 +264,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, raw=data, ctype=mimetypes.guess_type(p)[0] or "application/octet-stream")
         return self._err(404, "Not found")
 
-    def do_POST(self):
+    def _post(self):
         parts, _ = self._route()
         if not self._authorised():
             return self._err(401, "Bot token required (Authorization: Bearer <token>).")
@@ -254,7 +298,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, job.to_dict()) if job else self._err(404, "No such job")
         return self._err(404, "Not found")
 
-    def do_DELETE(self):
+    def _delete(self):
         parts, _ = self._route()
         if not self._authorised():
             return self._err(401, "Bot token required.")
@@ -265,10 +309,20 @@ class Handler(BaseHTTPRequestHandler):
         return self._err(404, "Not found")
 
 
+class _Server(ThreadingHTTPServer):
+    daemon_threads = True
+
+    def handle_error(self, request, client_address):
+        # Studio and browsers drop idle keep-alive connections: that is not an error worth a traceback
+        if isinstance(sys.exc_info()[1], (ConnectionResetError, ConnectionAbortedError, BrokenPipeError)):
+            return
+        super().handle_error(request, client_address)
+
+
 def make_server(host: str = config.DEFAULT_HOST, port: int = config.DEFAULT_PORT, store: JobStore | None = None):
     global STORE
     STORE = store or STORE or JobStore()
-    httpd = ThreadingHTTPServer((host, port), Handler)
+    httpd = _Server((host, port), Handler)
     httpd.daemon_threads = True
     return httpd
 
