@@ -167,6 +167,13 @@ function FX.resolve(effect)
 	if mod then
 		return require(mod)
 	end
+	-- the plugin's own copy (Studio previews) plays the place's saved effects; a fresh read picks up edits
+	local placeRoot = game:GetService("ReplicatedStorage"):FindFirstChild("ClipForge")
+	local placeEffects = placeRoot and placeRoot ~= root and placeRoot:FindFirstChild("Effects")
+	local saved = placeEffects and placeEffects:FindFirstChild(effect)
+	if saved and saved:IsA("ModuleScript") then
+		return require(saved:Clone())
+	end
 	local entry = Library.byId[effect]
 	if entry then
 		if entry.combo then

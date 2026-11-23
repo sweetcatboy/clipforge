@@ -601,6 +601,44 @@ def reduce_keys(tracks, root, tol_scale, max_gap, root_tol):
     return sorted(keep)
 
 
+HIT_POINTS = (15, 16, 27, 28)  # MediaPipe wrists and ankles
+
+
+def detect_hits(P: np.ndarray, fps: float, max_hits: int = 8) -> list[int]:
+    """Contact frames in a clip: a hand or foot moving fast relative to the hips, then stopping sharply. That is the
+    frame a punch, kick or slash lands, where effects, hit-stop and damage belong. P = (T, 33, 3) in metres."""
+    T = P.shape[0]
+    if T < 6:
+        return []
+    hip = (P[:, 23] + P[:, 24]) / 2
+    rel = P[:, list(HIT_POINTS)] - hip[:, None, :]
+    speed = (np.linalg.norm(np.diff(rel, axis=0), axis=2) * fps).max(axis=1)  # m/s between frames i and i+1
+    speed = np.convolve(np.pad(speed, 1, mode="edge"), [0.25, 0.5, 0.25], mode="valid")
+    top = float(speed.max())
+    if top < 2.0:  # nothing faster than a brisk gesture
+        return []
+    thr = max(2.0, 0.45 * top)
+    window = max(2, int(round(0.15 * fps)))
+    gap = max(1, int(round(0.18 * fps)))
+    hits: list[tuple[int, float]] = []
+    for i in range(1, len(speed) - 1):
+        if not (speed[i] >= thr and speed[i] >= speed[i - 1] and speed[i] > speed[i + 1]):
+            continue
+        after = speed[i + 1:i + 1 + window]
+        if not len(after) or after.min() >= 0.5 * speed[i]:
+            continue  # it keeps moving: a swing through, not a contact
+        stop = next(i + 1 + n for n, v in enumerate(after) if v < 0.6 * speed[i])
+        frame = min(stop + 1, T - 1)
+        if hits and frame - hits[-1][0] < gap:
+            if speed[i] > hits[-1][1]:
+                hits[-1] = (frame, float(speed[i]))
+            continue
+        hits.append((frame, float(speed[i])))
+    if len(hits) > max_hits:
+        hits = sorted(sorted(hits, key=lambda h: -h[1])[:max_hits])
+    return [f for f, _ in hits]
+
+
 def build_animation(pose: dict, opts: AnimOptions) -> dict:
     """pose = {"world": (T,33,3), "image": (T,33,3), "visibility": (T,33), "detected": (T,), "fps": float}."""
     fps = float(pose.get("fps") or 30.0)
@@ -626,6 +664,7 @@ def build_animation(pose: dict, opts: AnimOptions) -> dict:
             image = zero_phase_one_euro(image.reshape(T, -1), fps, min_cut, beta * 4).reshape(image.shape)
 
     P, _ = align_world(P, opts.gravity_align)
+    hit_frames = detect_hits(P, fps)
     frames = part_frames(P)
     frames = calibrate_feet(frames, P)
     frames = calibrate_head(frames)
@@ -685,6 +724,7 @@ def build_animation(pose: dict, opts: AnimOptions) -> dict:
     root_full = np.concatenate([root_ll, air_ll[:, None], vert_ll[:, None]], axis=1)
     r15_tracks = {n: quats[n] for n in R15_PARTS}
     keys = reduce_keys(r15_tracks, root_full, opts.key_tolerance, opts.max_key_gap, root_tol=0.01)
+    keys = sorted(set(keys) | {f for f in hit_frames if 0 <= f < T})  # a key on every contact frame
     r6_keys = keys  # same time slices keep both rigs in sync
 
     dur_frames = T - 1
@@ -723,5 +763,6 @@ def build_animation(pose: dict, opts: AnimOptions) -> dict:
         "root": [[round(float(v), 4) for v in root_ll[k]] for k in keys],
         "airborne": [round(float(air_ll[k]), 4) for k in keys],
         "vertical": [round(float(vert_ll[k]), 4) for k in keys],
+        "markers": [{"name": "Hit", "t": round(f / fps / opts.speed, 4)} for f in hit_frames],
         "quality": quality,
     }

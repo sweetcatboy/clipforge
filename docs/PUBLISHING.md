@@ -81,7 +81,7 @@ from a video.
 ## 4. Share the Studio plugin on its own (optional)
 
 - **GitHub release:** run `/clipforge:studio build` (or `python scripts\build_plugin.py`). On GitHub open
-  **Releases > Draft a new release**, tag the version (for example `v1.2.1`), and attach `dist\ClipForge.rbxmx`. People drop it into
+  **Releases > Draft a new release**, tag the version (for example `v1.3.0`), and attach `dist\ClipForge.rbxmx`. People drop it into
   `%LOCALAPPDATA%\Roblox\Plugins`.
 - **Creator Store:** insert `dist\ClipForge.rbxmx` into a place, right-click the `ClipForge` script and choose
   **Publish as Plugin**.

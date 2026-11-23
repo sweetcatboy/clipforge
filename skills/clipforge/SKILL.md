@@ -131,8 +131,11 @@ Results go to:
   re-baking (long clips are split into `Part1`, `Part2`... children). A copy goes to
   `ServerStorage.RBX_ANIMSAVES.<rig>` for the Animation Editor. The plugin's **Anim > Publish** uploads it and returns
   an asset id. A clip with both an animation and a VFX also gets an ability in
-  `ReplicatedStorage.ClipForge.Abilities` that fires the effect on the detected hit; words with both ("fire punch")
-  get one that fires on every Hit marker, with hit-stop. In a LocalScript:
+  `ReplicatedStorage.ClipForge.Abilities` that fires the effect on the animation's Hit markers (video animations get
+  them where a hand or foot lands), with hit-stop; a one-off effect (a black hole, an explosion) fires once. The
+  plugin's **Anim > Play** shows the animation with its effects, and **Anim > Try in game** puts a tool in
+  StarterPack that plays them when clicked (it holds the weapon attached to the preview rig): tell the user to press
+  Play, equip it and click. In a LocalScript:
   `require(game.ReplicatedStorage.ClipForge.Abilities).play("<Name>Ability", character, { animationId = "rbxassetid://<published id>" })`.
 - **Generated VFX:** a config module in `ReplicatedStorage.ClipForge.Effects` like any effect (plays with `FX.play`).
 - **Cutscene:** `ReplicatedStorage.ClipForge.Cutscenes.<Name>`. It also opens in the plugin's **Scenes** tab for

@@ -865,6 +865,9 @@ SPEED_WORDS = [("very fast", 1.6), ("super fast", 1.6), ("fast", 1.3), ("quick",
                ("slow motion", 0.5), ("slow-mo", 0.5), ("slowly", 0.7), ("slow", 0.7), ("lazy", 0.75)]
 POWER_WORDS = [("massive", 1.3), ("huge", 1.25), ("powerful", 1.2), ("heavy", 1.2), ("strong", 1.15), ("big", 1.15),
                ("hard", 1.15), ("epic", 1.2), ("light", 0.85), ("small", 0.85), ("gentle", 0.8), ("soft", 0.85), ("tiny", 0.8)]
+# "triple jump", "double slash", "jab x3", "kick three times": one move, repeated
+REPEAT_WORDS = (("double", 2), ("twice", 2), ("two times", 2), ("triple", 3), ("three times", 3), ("thrice", 3),
+                ("quadruple", 4), ("four times", 4), ("x2", 2), ("x3", 3), ("x4", 4), ("2x", 2), ("3x", 3), ("4x", 4))
 SPLIT = re.compile(r"\s*(?:,|;|\bthen\b|\band then\b|\bfollowed by\b|\binto\b|->|=>|\bafter that\b)\s*")
 
 
@@ -930,6 +933,9 @@ def describe(prompt: str) -> dict:
     if len(seq) >= 2:
         return {"moves": seq, "speed": speed, "power": power, "mirror": mirror, "loop": False, "score": 9.0}
     mid, score = match_move(prompt)
+    times = next((n for w, n in REPEAT_WORDS if _has(text, w)), 1)
+    if mid and times > 1 and mid not in COMBOS and not MOVES[mid]["loop"]:
+        return {"moves": [mid] * times, "speed": speed, "power": power, "mirror": mirror, "loop": False, "score": score}
     # "left hook" / "left jab" are the move's own lead hand, not a request to mirror
     if mid in ("jab", "hook") and not _has(text, "right"):
         mirror = False

@@ -118,10 +118,17 @@ local function resolve(cs)
 	end
 	local folder = root:FindFirstChild("Cutscenes")
 	local mod = folder and folder:FindFirstChild(cs)
-	if not mod then
-		error("ClipForge: no cutscene named " .. tostring(cs))
+	if mod then
+		return require(mod)
 	end
-	return require(mod)
+	-- the plugin's own copy (Studio previews) reads the place's saved cutscenes
+	local placeRoot = game:GetService("ReplicatedStorage"):FindFirstChild("ClipForge")
+	local placeFolder = placeRoot and placeRoot ~= root and placeRoot:FindFirstChild("Cutscenes")
+	local saved = placeFolder and placeFolder:FindFirstChild(cs)
+	if saved and saved:IsA("ModuleScript") then
+		return require(saved:Clone())
+	end
+	error("ClipForge: no cutscene named " .. tostring(cs))
 end
 
 local function pivotOf(x): CFrame?
