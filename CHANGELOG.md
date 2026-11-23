@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.2.0
+
+**New**
+
+- **Animations from words**: a library of 40+ hand-keyed moves (jab, cross, hook, uppercut, front and roundhouse
+  kicks, sword slash, thrust, overhead slam, spin attack, spell cast, power up, energy beam, throw, ground pound,
+  block, idle, fighting stance, walk, run, sprint, jump, backflip, front flip, dash, dodge roll, hit reaction,
+  knockdown, dizzy, and emotes: wave, cheer, dance, clap, bow, point, salute, shrug, flex, laugh, victory pose, sad)
+  plus punch, sword and kick combos. "jab then cross then uppercut" chains moves; speed, power, side and loop words
+  are read. Baked onto any R15 or R6 rig with a Hit marker on contact frames.
+- **Make anything from a message**: words go to a router that decides what to make: an animation, an effect, both
+  linked as an ability ("fire punch", "kamehameha"), a generated piece, a model or a cutscene. New job kind `auto`
+  (the default for words), `POST /api/preview` (what words would make, without a job), MCP tools `clipforge_make`
+  and `clipforge_animation_from_prompt`, Discord `!make` and mentions, `!anim` with words, `/clipforge:make`, and
+  an Auto choice in the plugin's Create tab and on the server page.
+- **Hit-stop** on ability hits (0.03 + 0.045 x strength seconds) and a rotation-led trauma camera shake.
+- **VFX**: hits get a real hot frame (a two-layer impact stamp with a solid core that reads in daylight), layered
+  shock sheets flat to the strike, smoke puffs and a dim linger: punch, critical, hit spark, uppercut, shockwave,
+  crater slam, thrust, parry, landing and dash.
+- **Cutscenes**: depth of field that follows the subject, sized from the shot; mood grades (boss, victory, defeat,
+  reveal, cold, flashback); handheld camera drift; crash zooms (`zoom` event); letterbox sized for 2.39:1 on the
+  actual screen; a new title card (band wipe, the name lands with a sheen, a flash and a small shake, the epithet
+  follows); in games the other UI, core UI and mouse icon hide while it plays, the camera blends back to gameplay,
+  and a death, respawn or overrun ends it. Templates use longer lenses (boss intro adds a close-up insert).
+- **Models**: stylised proportions (a 4-stud one-handed sword, 1:8 blade), edge bevels, fullers, grip wraps, gems,
+  a swing trail on every weapon, and a light and sparkles on glowing ones.
+
+**Fixed**
+
+- Held weapons: attaching a model to a rig left the blade behind where the model was built.
+- Text animation holds no longer snap back to the stance at the end of a contact hold.
+- Cutscene events: one failing event no longer stalls (and re-fires) the rest.
+
 ## 1.1.0
 
 **New**

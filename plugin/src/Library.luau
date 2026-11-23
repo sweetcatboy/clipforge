@@ -37,6 +37,7 @@ add({ id = "hitspark", title = "Hit Spark", category = "Combat", tags = "hit spa
 	blurb = "Small, fast spark for every hit",
 	build = function()
 		return B.spec({ name = "HitSpark", palette = PAL.fire, layers = {
+			B.stamp({ at = CHEST, size = 3.4 }),
 			B.flash({ at = CHEST, size = 3.2, lifetime = 0.07 }),
 			B.star({ at = CHEST, size = 3.6, lifetime = 0.14, rotation = { -20, 20 } }),
 			B.shockwave({ at = CHEST, size = 3.6, lifetime = 0.18 }),
@@ -50,9 +51,12 @@ add({ id = "punch", title = "Punch Impact", category = "Combat", tags = "punch f
 		local at = { 0, 3, -2.5 }
 		return B.spec({ name = "PunchImpact", palette = PAL.fire, layers = {
 			B.inkFlash({ at = at, size = 7 }),
+			B.stamp({ at = at, size = 7.5 }),
 			B.flash({ at = at, size = 6 }),
 			B.bloom({ at = at, size = 8, alpha = 0.45, lifetime = 0.25 }),
 			B.shockwave({ at = at, size = 9, lifetime = 0.28 }),
+			B.shockburst({ at = at, dir = "Front", size = 9, count = 5 }),
+			B.puff({ at = at, size = 2.2, count = 3, speed = { 2, 6 } }),
 			B.streaks({ at = at, count = 12 }),
 			B.sparks({ at = at, count = 12, spread = { 70, 70 } }),
 			B.dust({ at = { 0, 0.2, -2.5 }, count = 6, size = 2.5 }),
@@ -65,8 +69,11 @@ add({ id = "critical", title = "Critical Hit", category = "Combat", tags = "crit
 		local at = { 0, 3, -2 }
 		return B.spec({ name = "CriticalHit", palette = PAL.blood, layers = {
 			B.inkFlash({ at = at, size = 12 }),
+			B.stamp({ at = at, size = 12, lifetime = 0.07 }),
 			B.flash({ at = at, size = 9 }),
 			B.star({ at = at, size = 9, lifetime = 0.25 }),
+			B.shockburst({ at = at, dir = "Front", size = 15 }),
+			B.plume({ at = at, size = 4.5, count = 4 }),
 			B.rays({ at = at, size = 15, lifetime = 0.5 }),
 			B.shockwave({ at = at, size = 12, lifetime = 0.3 }),
 			B.shockwave({ id = "shock2", t = 0.07, at = at, size = 18, lifetime = 0.35, tex = "THINRING" }),
@@ -82,6 +89,7 @@ add({ id = "parry", title = "Parry Clash", category = "Combat", tags = "parry bl
 	build = function()
 		return B.spec({ name = "ParryClash", palette = PAL.holy, layers = {
 			B.flash({ at = CHEST, size = 4, lifetime = 0.06 }),
+			B.stamp({ at = CHEST, size = 4.5, tex = "ASHOCK", lifetime = 0.05 }),
 			B.star({ at = CHEST, size = 7, lifetime = 0.2, rotation = { 40, 50 } }),
 			B.shockwave({ at = CHEST, size = 5, tex = "THINRING", lifetime = 0.2 }),
 			B.sparks({ at = CHEST, count = 28, speed = { 40, 95 }, spread = { 55, 55 }, size = 0.32, gravity = { 0, -55, 0 } }),
@@ -93,8 +101,10 @@ add({ id = "uppercut", title = "Uppercut Launch", category = "Combat", tags = "u
 	blurb = "Rising rings and streaks that launch upward",
 	build = function()
 		return B.spec({ name = "UppercutLaunch", palette = PAL.energy, layers = {
+			B.stamp({ at = { 0, 2.5, -1.5 }, size = 6 }),
 			B.flash({ at = { 0, 2.5, -1.5 }, size = 5 }),
 			B.windRing({ at = { 0, 1.5, -1.5 }, size = 5, lifetime = 0.35 }),
+			B.shockburst({ at = { 0, 3, -1.5 }, dir = "Top", size = 8, count = 4 }),
 			B.windRing({ id = "ring2", t = 0.05, at = { 0, 4, -1.5 }, size = 6.5, lifetime = 0.4 }),
 			B.windRing({ id = "ring3", t = 0.1, at = { 0, 6.5, -1.5 }, size = 8, lifetime = 0.45 }),
 			B.streaks({ at = { 0, 2, -1.5 }, dir = "Top", spread = { 12, 12 }, speed = { 90, 150 }, count = 14, size = 2 }),
@@ -108,7 +118,10 @@ add({ id = "shockwave", title = "Shockwave", category = "Combat", tags = "shockw
 	build = function()
 		return B.spec({ name = "Shockwave", palette = PAL.energy, layers = {
 			B.flash({ at = { 0, 1.2, 0 }, size = 8 }),
+			B.stamp({ at = { 0, 1.2, 0 }, size = 9 }),
 			B.sphere({ at = { 0, 0, 0 }, size = 16, life = 0.45 }),
+			B.shockburst({ at = { 0, 0.4, 0 }, dir = "Top", size = 22, count = 3, lifetime = { 0.3, 0.42 } }),
+			B.plume({ at = { 0, 0.6, 0 }, size = 6, count = 6, speed = { 6, 14 }, spread = { 85, 85 } }),
 			B.ring({ size = 24, lifetime = 0.75 }),
 			B.ring({ id = "shockRing", t = 0.06, size = 17, tex = "SHOCKRING", le = 0.7, lifetime = 0.6 }),
 			B.dust({ at = { 0, 0.3, 0 }, count = 18, size = 4.5, speed = { 22, 42 } }),
@@ -122,7 +135,10 @@ add({ id = "groundpound", title = "Crater Slam", category = "Combat", tags = "cr
 	build = function()
 		return B.spec({ name = "CraterSlam", palette = PAL.earth, layers = {
 			B.inkFlash({ at = { 0, 1.5, 0 }, size = 9 }),
+			B.stamp({ at = { 0, 1.5, 0 }, size = 10 }),
 			B.flash({ at = { 0, 1.5, 0 }, size = 8 }),
+			B.shockburst({ at = { 0, 0.4, 0 }, dir = "Top", size = 16, count = 3 }),
+			B.plume({ at = { 0, 0.8, 0 }, size = 6.5, count = 6, speed = { 4, 12 } }),
 			B.decalDisc({ tex = "CRACKSTAR", size = 17, color = "ink", life = 2.6, fade = { { 0, 0.1 }, { 0.7, 0.2 }, { 1, 1 } } }),
 			B.spikes({ count = 10, radius = 5.5, height = 4.5, lean = 38, hot = false, deepColor = "deep", bodyColor = "body", tipColor = "core", life = 1.8 }),
 			B.ring({ size = 15, color = "core", le = 0.5, lifetime = 0.55 }),
@@ -138,8 +154,10 @@ add({ id = "thrust", title = "Spear Thrust", category = "Combat", tags = "thrust
 		return B.spec({ name = "SpearThrust", palette = PAL.energy, layers = {
 			B.streaks({ at = { 0, 3, -1 }, dir = "Front", spread = { 7, 7 }, speed = { 130, 210 }, count = 12, size = 2.4 }),
 			B.windRing({ at = { 0, 3, -3 }, size = 4, dir = "Front", lifetime = 0.25 }),
+			B.stamp({ at = { 0, 3, -7 }, size = 5.5 }),
 			B.flash({ at = { 0, 3, -7 }, size = 4.5 }),
 			B.shockwave({ at = { 0, 3, -7 }, size = 6, lifetime = 0.22 }),
+			B.shockburst({ at = { 0, 3, -7 }, dir = "Front", size = 7, count = 4 }),
 			B.sparks({ at = { 0, 3, -7 }, dir = "Front", spread = { 45, 45 }, count = 12 }),
 			B.light({ at = { 0, 3, -6 }, brightness = 5, range = 12 }),
 		} })
@@ -457,6 +475,7 @@ add({ id = "dash", title = "Dash Burst", category = "Movement", tags = "dash spr
 			B.windRing({ id = "r3", t = 0.08, at = { 0, 3, -8 }, dir = "Front", size = 5, lifetime = 0.35 }),
 			B.streaks({ at = { 0, 3, -2 }, dir = "Back", spread = { 14, 14 }, speed = { 70, 110 }, count = 14 }),
 			B.dust({ at = { 0, 0.2, 0 }, count = 7, size = 2.6 }),
+			B.puff({ at = { 0, 0.5, 0.5 }, size = 2, count = 3, dir = "Back", spread = { 40, 40 }, speed = { 6, 12 } }),
 		} })
 	end })
 add({ id = "speedboost", title = "Speed Boost", category = "Movement", tags = "speed boost haste fast sprint",
@@ -475,6 +494,8 @@ add({ id = "landing", title = "Landing Dust", category = "Movement", tags = "lan
 		return B.spec({ name = "LandingDust", palette = PAL.earth, layers = {
 			B.dust({ count = 12, size = 3 }),
 			B.ring({ tex = "THINRING", size = 6, color = "smoke", le = 0.2, lifetime = 0.4 }),
+			B.shockburst({ at = { 0, 0.3, 0 }, dir = "Top", size = 7, count = 4, color = "smoke", le = 0.2 }),
+			B.puff({ at = { 0, 0.4, 0 }, size = 2.4, count = 4, spread = { 80, 80 }, speed = { 5, 11 } }),
 			B.debris({ count = 6, size = 0.35, speed = { 10, 20 } }),
 		} })
 	end })

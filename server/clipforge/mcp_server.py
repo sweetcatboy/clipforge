@@ -17,6 +17,51 @@ PROTOCOL = "2025-06-18"
 
 TOOLS = [
     {
+        "name": "clipforge_make",
+        "description": "Make whatever a message asks for in Roblox, no video needed: an animation from a library of "
+                       "hand-keyed moves (punches, kicks, sword slashes, thrusts, overhead slams, spins, casts, beams, "
+                       "jumps, flips, rolls, dashes, runs, reactions, emotes, combos), an effect from a 100-effect "
+                       "library, both linked as an ability (the effect fires on the animation's Hit frame with hit-stop "
+                       "and camera shake), a generated showcase effect, a weapon/prop model or a cutscene. Send the "
+                       "words as people typed them: 'fire punch', 'make me a backflip', 'kamehameha', 'jab then cross "
+                       "then uppercut', 'huge purple lightning slash', 'glowing katana', 'boss intro cutscene'. Studio "
+                       "builds the result. Set preview to see what it would make without making it.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "message": {"type": "string", "description": "The request, in the user's own words"},
+                "kind": {"type": "string", "enum": ["auto", "animation", "vfx", "both", "generate", "cutscene", "model"],
+                         "default": "auto", "description": "auto reads the words; force one to override"},
+                "name": {"type": "string"},
+                "speed": {"type": "number", "description": "Animation speed (1 = normal)"},
+                "loop": {"type": "boolean"},
+                "mirror": {"type": "boolean", "description": "Left-handed / mirrored animation"},
+                "preview": {"type": "boolean", "default": False},
+            },
+            "required": ["message"],
+        },
+    },
+    {
+        "name": "clipforge_animation_from_prompt",
+        "description": "Make a Roblox animation from words, baked onto any R15 or R6 rig in Studio, with a Hit marker "
+                       "on contact frames: 'uppercut', 'heavy overhead slam', 'fast sword slash', 'slow wave', "
+                       "'dodge roll', 'jab then cross then hook', 'left hook', 'looping idle'. Speed and power words "
+                       "(fast, slow, heavy, huge) and left/mirror are understood. Set effect to also make the move's "
+                       "effect and link both as an ability. clipforge_presets lists every move.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt": {"type": "string"},
+                "effect": {"type": "boolean", "default": False, "description": "Also make the matching effect + ability"},
+                "speed": {"type": "number"},
+                "loop": {"type": "boolean"},
+                "mirror": {"type": "boolean"},
+                "name": {"type": "string"},
+            },
+            "required": ["prompt"],
+        },
+    },
+    {
         "name": "clipforge_from_video",
         "description": "Turn a video (YouTube, YouTube Shorts, TikTok, Instagram Reels, X/Twitter, Reddit, Twitch "
                        "clips, or a local file path) into a Roblox animation (body motion retargeted to R15/R6) "
@@ -133,7 +178,7 @@ TOOLS = [
     {
         "name": "clipforge_presets",
         "description": "Everything ClipForge can build: library effects (id, title, category), generator options, "
-                       "cutscene templates and model types.",
+                       "cutscene templates, model types and the animation moves.",
         "inputSchema": {"type": "object", "properties": {}},
     },
 ]
@@ -169,6 +214,9 @@ class HttpBackend:
     def presets(self):
         return self._req("GET", "/api/catalog")
 
+    def preview(self, payload):
+        return self._req("POST", "/api/preview", payload)
+
 
 class LocalBackend:
     def __init__(self, store):
@@ -189,6 +237,9 @@ class LocalBackend:
     def presets(self):
         from .catalog import summary
         return summary()
+
+    def preview(self, payload):
+        return self.store.preview(payload)
 
 
 def _backend():
@@ -226,7 +277,23 @@ def _summary(job):
     return out
 
 
+def _anim_opts(args):
+    return {k: args[k] for k in ("speed", "loop", "mirror") if args.get(k) is not None}
+
+
 def _call(backend, name, args):
+    if name == "clipforge_make":
+        payload = {"prompt": args["message"], "kind": args.get("kind") or "auto", "name": args.get("name"),
+                   "options": _anim_opts(args), "client": "mcp"}
+        if args.get("preview"):
+            pv = backend.preview(payload)
+            plan = pv["plan"]
+            return {"would_make": pv.get("message"), "plan": {k: v for k, v in plan.items() if v}}
+        return _summary(backend.get(backend.create(payload)["id"], wait=30))
+    if name == "clipforge_animation_from_prompt":
+        job = backend.create({"prompt": args["prompt"], "kind": "both" if args.get("effect") else "animation",
+                              "name": args.get("name"), "options": _anim_opts(args), "client": "mcp"})
+        return _summary(backend.get(job["id"], wait=30))
     if name == "clipforge_from_video":
         opts = {k: args[k] for k in ("start", "end", "rootMotion", "loop", "mirror", "style") if k in args}
         job = backend.create({"source": args["source"], "kind": args.get("kind", "both"), "name": args.get("name"),
@@ -288,8 +355,9 @@ def run():
                           "capabilities": {"tools": {"listChanged": False}},
                           "serverInfo": {"name": "clipforge", "version": config.VERSION},
                           "instructions": "Make Roblox animations, VFX, generated showcase VFX, cutscenes and "
-                                          "weapon/prop models from social-media videos or prompts. Studio builds "
-                                          "results via the ClipForge plugin's Bot Link."}
+                                          "weapon/prop models from social-media videos or from words. For a request "
+                                          "in plain words use clipforge_make with the message as typed. Studio "
+                                          "builds results via the ClipForge plugin's Bot Link."}
             elif method == "tools/list":
                 result = {"tools": TOOLS}
             elif method == "tools/call":

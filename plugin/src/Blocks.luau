@@ -47,6 +47,17 @@ B.TEX = {
 	BEAMFLOW = 16892453445, -- beam energy flow
 	BEAMSMOKE = 12823611043, -- beam smoke strands
 	RUNES = 135141028133816, -- white rune circle
+	-- from studied top-tier hit effects (vfxmith library)
+	IMPACT37 = 16892305780, -- radial impact stamp (1-2 frame hot frame)
+	IMPACT161 = 16151520120, -- jagged impact burst
+	SHOCKWAVE = 8505111714, -- layered shock sheet (VelocityPerpendicular, several at random angles)
+	ASHOCK = 9659008631, -- sharp shock flash
+	STAR102 = 17391818367, -- clean 4-point star
+	SPEC25 = 16879804431, -- tiny hard spec
+	PLUME = 8527116276, -- soft lingering smoke plume
+	FANCYPUFF = 11822996479, -- 4x4 smoke that curls and dissipates
+	DUSTSHEET = 11402221943, -- 4x4 dust burst
+	AURAGLOW = 13305806509, -- soft aura glow
 }
 
 -- Ready palettes (role -> hex). Effects pick one; the user's palette replaces it through Recolor.
@@ -183,6 +194,69 @@ function B.star(o)
 		Size = { { 0, 0 }, { 0.12, s }, { 1, 0 } }, Transparency = { { 0, 0 }, { 0.7, 0.2 }, { 1, 1 } },
 		Lifetime = o.lifetime or 0.18,
 	})
+end
+
+-- The hot frame of a hit: an impact stamp that is full size on frame 1 and gone by frame 3. Two layers: a solid
+-- (LightEmission 0) core that still reads against a bright sky, and an additive copy on top that glows at night.
+function B.stamp(o)
+	o = o or {}
+	local s = o.size or 8
+	local id = o.id or "stamp"
+	local core = emitter(id .. "Core", { t = o.t, at = o.at }, {
+		Texture = o.tex or "IMPACT37", Color = o.coreColor or "core", LightEmission = 0, Brightness = 1, LightInfluence = 0,
+		Orientation = "FacingCamera", Speed = 0, Rotation = { -360, 360 }, ZOffset = 3.2,
+		Size = { { 0, s * 0.85 }, { 1, s } }, Transparency = { { 0, 0.05 }, { 0.6, 0.35 }, { 1, 1 } },
+		Lifetime = o.lifetime or 0.05,
+	})
+	local glow = emitter(id, o, {
+		Texture = o.tex or "IMPACT37", Color = o.color or "white", LightEmission = 1, Brightness = o.brightness or 6,
+		LightInfluence = 0, Orientation = "FacingCamera", Speed = 0, Rotation = { -360, 360 }, ZOffset = 3.4,
+		Size = { { 0, s }, { 1, s * 1.15 } }, Transparency = { { 0, 0 }, { 0.6, 0.2 }, { 1, 1 } },
+		Lifetime = o.lifetime or 0.06,
+	})
+	return { core, glow }
+end
+
+-- Shock sheets racing out from a hit: several at random angles build a ragged, full shock. Flat to the strike
+-- (dir "Front" for punches and stabs, "Top" for slams and landings).
+function B.shockburst(o)
+	o = o or {}
+	local r = o.size or 13.9
+	return emitter("shockburst", o, {
+		Texture = o.tex or "SHOCKWAVE", Color = o.color or "core", LightEmission = o.le or 1, Brightness = o.brightness or 1.3,
+		LightInfluence = 0, Orientation = "VelocityPerpendicular", EmissionDirection = o.dir or "Front", Speed = 0.01,
+		Rotation = { -360, 360 }, ZOffset = 2,
+		Size = { { 0, 0 }, { 0.18, r * 0.55 }, { 0.5, r * 0.86 }, { 1, r } },
+		Transparency = { { 0, 0.2 }, { 0.45, 0.45 }, { 1, 1 } }, Lifetime = o.lifetime or { 0.21, 0.3 },
+	}, o.count or 5)
+end
+
+-- Dim smoke left hanging after the hit (0.55-1.8 s): the linger that sells mass. Grey, lit by the scene.
+function B.plume(o)
+	o = o or {}
+	local s = o.size or 4
+	return emitter("plume", o, {
+		Texture = "PLUME", Color = o.color or "smoke", LightEmission = 0, Brightness = 1, LightInfluence = o.li or 0.7,
+		Orientation = "FacingCamera", EmissionDirection = o.dir or "Top", SpreadAngle = o.spread or { 70, 70 },
+		Speed = o.speed or { 2, 7 }, Drag = o.drag or 2.5, Acceleration = o.gravity or { 0, 1.5, 0 },
+		Rotation = { -360, 360 }, RotSpeed = { -25, 25 },
+		Size = { { 0, s * 0.5 }, { 0.35, s * 0.9 }, { 1, s * 1.2 } },
+		Transparency = { { 0, o.alpha or 0.55 }, { 0.3, (o.alpha or 0.55) + 0.05 }, { 1, 1 } },
+		Lifetime = o.lifetime or { 0.55, 1.8 }, ZOffset = -0.6,
+	}, o.count or 5)
+end
+
+-- Smoke puffs that curl and dissipate (a flipbook), for the moment right after the flash.
+function B.puff(o)
+	o = o or {}
+	local s = o.size or 3
+	return emitter("puff", o, {
+		Texture = "FANCYPUFF", FlipbookLayout = 4, FlipbookMode = "OneShot", Color = o.color or "smoke",
+		LightEmission = o.le or 0.3, Brightness = 1, LightInfluence = 0.5, Orientation = "FacingCamera",
+		EmissionDirection = o.dir or "Top", SpreadAngle = o.spread or { 180, 180 }, Speed = o.speed or { 3, 10 }, Drag = 4,
+		Rotation = { -360, 360 }, Size = { { 0, s * 0.7 }, { 1, s * 1.3 } }, Transparency = { { 0, 0.15 }, { 1, 0.6 } },
+		Lifetime = o.lifetime or { 0.5, 0.8 }, ZOffset = 0.5,
+	}, o.count or 4)
 end
 
 -- Dark twin behind a flash (anime impact frame ink). Keep it thin and quick.

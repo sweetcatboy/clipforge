@@ -20,6 +20,12 @@ local function C(v)
 	return Color3.new(1, 1, 1)
 end
 
+-- one value step lighter/darker (bevels, edges, fullers, wraps): readable shape breaks without new colours
+local function shade(v, dv: number): Color3
+	local h, sat, val = C(v):ToHSV()
+	return Color3.fromHSV(h, math.max(0, sat - (if dv > 0 then 0.06 else 0)), math.clamp(val + dv, 0, 1))
+end
+
 ModelKit.STYLES = {
 	steel = { metal = "#C9CED6", trim = "#C8A24A", grip = "#3A2A22", wood = "#6B4A2F", stone = "#7E848C", material = "Metal" },
 	dark = { metal = "#3B3D45", trim = "#7A3FA8", grip = "#16161A", wood = "#2A2228", stone = "#3A3940", material = "Metal" },
@@ -100,6 +106,38 @@ function B:tip(name, width, height, thick, cf, color, material)
 	self:part(name .. "L", Vector3.new(thick, height, half), cf * CFrame.new(-half / 2, height / 2, 0) * CFrame.Angles(0, math.rad(90), 0), color, material, "Wedge")
 end
 
+function B:gem(name, cf, d, color)
+	self:part(name, Vector3.new(d * 0.62, d * 0.62, d * 0.62), cf, color, "Neon", "Ball")
+	local shell = self:part(name .. "Shell", Vector3.new(d, d, d), cf, color, "Glass", "Ball")
+	shell.Transparency = 0.3
+	shell.Reflectance = 0.2
+end
+
+-- grip wrap: thin rings a touch wider than the grip, alternating two tones
+function B:wraps(name, from: number, to: number, diameter: number, color, n: number)
+	for i = 0, n - 1 do
+		local y = from + (to - from) * (i + 0.5) / n
+		self:cyl(name .. i, 0.045, diameter + 0.03, CFrame.new(0, y, 0), if i % 2 == 0 then shade(color, -0.08) else shade(color, 0.06), "Leather")
+	end
+end
+
+-- straight blade with a bright bevel on each edge and a darker fuller (or a neon one when it glows)
+function B:blade(name, width: number, length: number, thick: number, y0: number, s, glow)
+	local core = self:part(name, Vector3.new(width, length, thick), CFrame.new(0, y0 + length / 2, 0), s.metal, s.material)
+	local edge = shade(s.metal, 0.12)
+	for _, side in { -1, 1 } do
+		self:part(name .. "Edge" .. (if side < 0 then "L" else "R"), Vector3.new(0.05, length, thick + 0.006),
+			CFrame.new(side * (width / 2 - 0.022), y0 + length / 2, 0), edge, "SmoothPlastic")
+	end
+	local fl = length * 0.68
+	if glow then
+		self:part(name .. "Fuller", Vector3.new(width * 0.3, fl, thick + 0.012), CFrame.new(0, y0 + 0.12 + fl / 2, 0), glow, "Neon")
+	else
+		self:part(name .. "Fuller", Vector3.new(width * 0.3, fl, thick + 0.01), CFrame.new(0, y0 + 0.12 + fl / 2, 0), shade(s.metal, -0.28), s.material)
+	end
+	return core
+end
+
 -- faceted crystal or rock from the effect runtime's Crystal builder (wedge facets with their own shading)
 function B:crystal(kind, cf, size, palette, seed)
 	local ok, VT = pcall(function()
@@ -163,19 +201,23 @@ end
 ---------------------------------------------------------------------------------------------------- weapons
 local W = {}
 
+-- One-handed sword, ~4 studs (0.8 of a character): blade 1:8, guard 3.5x the blade width, the hand wraps the grip.
+-- Three value groups: light blade, mid trim, dark grip; detail clustered at the hilt.
 function W.sword(b, s, glow, opts)
 	local mat = s.material
-	local handle = b:cyl("Grip", 1.1, 0.24, CFrame.new(0, 0, 0), s.grip, "Fabric")
-	b:part("Pommel", Vector3.new(0.36, 0.36, 0.36), CFrame.new(0, -0.66, 0), s.trim, "Metal", "Ball")
-	b:part("Guard", Vector3.new(1.5, 0.2, 0.32), CFrame.new(0, 0.65, 0), s.trim, "Metal")
-	b:part("GuardL", Vector3.new(0.24, 0.24, 0.24), CFrame.new(-0.78, 0.65, 0), s.trim, "Metal", "Ball")
-	b:part("GuardR", Vector3.new(0.24, 0.24, 0.24), CFrame.new(0.78, 0.65, 0), s.trim, "Metal", "Ball")
-	local L = opts.length or 3.4
-	b:part("Blade", Vector3.new(0.36, L, 0.08), CFrame.new(0, 0.75 + L / 2, 0), s.metal, mat)
-	b:tip("Tip", 0.36, 0.55, 0.08, CFrame.new(0, 0.75 + L, 0), s.metal, mat)
-	if glow then
-		b:part("Fuller", Vector3.new(0.08, L * 0.85, 0.1), CFrame.new(0, 0.75 + L * 0.45, 0), glow, "Neon")
-	end
+	local handle = b:cyl("Grip", 0.66, 0.17, CFrame.new(0, 0, 0), s.grip, "Leather")
+	b:wraps("Wrap", -0.28, 0.28, 0.17, s.grip, 3)
+	b:part("Pommel", Vector3.new(0.27, 0.27, 0.27), CFrame.new(0, -0.45, 0), s.trim, "Metal", "Ball")
+	b:part("PommelCap", Vector3.new(0.11, 0.11, 0.11), CFrame.new(0, -0.57, 0), glow or shade(s.trim, 0.12), if glow then "Neon" else "Metal", "Ball")
+	b:part("Guard", Vector3.new(1.2, 0.14, 0.22), CFrame.new(0, 0.4, 0), s.trim, "Metal")
+	b:tip("GuardTipL", 0.14, 0.22, 0.22, CFrame.new(-0.6, 0.4, 0) * CFrame.Angles(0, 0, math.rad(78)), s.trim, "Metal")
+	b:tip("GuardTipR", 0.14, 0.22, 0.22, CFrame.new(0.6, 0.4, 0) * CFrame.Angles(0, 0, math.rad(-78)), s.trim, "Metal")
+	b:gem("Gem", CFrame.new(0, 0.4, -0.12), 0.19, glow or "#46D2FF")
+	b:gem("GemBack", CFrame.new(0, 0.4, 0.12), 0.19, glow or "#46D2FF")
+	b:part("Collar", Vector3.new(0.4, 0.18, 0.14), CFrame.new(0, 0.56, 0), shade(s.trim, -0.08), "Metal")
+	local L = opts.length or 2.3
+	b:blade("Blade", 0.34, L, 0.08, 0.65, s, glow)
+	b:tip("Tip", 0.34, 0.45, 0.08, CFrame.new(0, 0.65 + L, 0), s.metal, mat)
 	return handle
 end
 
@@ -185,12 +227,12 @@ function W.greatsword(b, s, glow)
 	b:part("Guard", Vector3.new(2.3, 0.3, 0.42), CFrame.new(0, 0.85, 0), s.trim, "Metal")
 	b:tip("GuardTipL", 0.42, 0.35, 0.3, CFrame.new(-1.15, 0.85, 0) * CFrame.Angles(0, 0, math.rad(90)), s.trim, "Metal")
 	b:tip("GuardTipR", 0.42, 0.35, 0.3, CFrame.new(1.15, 0.85, 0) * CFrame.Angles(0, 0, math.rad(-90)), s.trim, "Metal")
-	local L = 4.6
-	b:part("Blade", Vector3.new(0.72, L, 0.12), CFrame.new(0, 1 + L / 2, 0), s.metal, s.material)
-	b:tip("Tip", 0.72, 0.9, 0.12, CFrame.new(0, 1 + L, 0), s.metal, s.material)
-	if glow then
-		b:part("Rune", Vector3.new(0.14, L * 0.8, 0.14), CFrame.new(0, 1 + L * 0.45, 0), glow, "Neon")
-	end
+	b:wraps("Wrap", -0.75, 0.55, 0.28, s.grip, 5)
+	local L = 4.2
+	b:blade("Blade", 0.8, L, 0.14, 1, s, glow)
+	b:tip("Tip", 0.8, 0.9, 0.14, CFrame.new(0, 1 + L, 0), s.metal, s.material)
+	b:gem("Gem", CFrame.new(0, 0.85, -0.23), 0.26, glow or "#FF4A5A")
+	b:gem("GemBack", CFrame.new(0, 0.85, 0.23), 0.26, glow or "#FF4A5A")
 	return handle
 end
 
@@ -198,11 +240,9 @@ function W.dagger(b, s, glow)
 	local handle = b:cyl("Grip", 0.7, 0.2, CFrame.new(0, 0, 0), s.grip, "Fabric")
 	b:part("Pommel", Vector3.new(0.26, 0.26, 0.26), CFrame.new(0, -0.42, 0), s.trim, "Metal", "Ball")
 	b:part("Guard", Vector3.new(0.8, 0.14, 0.2), CFrame.new(0, 0.42, 0), s.trim, "Metal")
-	b:part("Blade", Vector3.new(0.26, 1.3, 0.06), CFrame.new(0, 0.49 + 0.65, 0), s.metal, s.material)
-	b:tip("Tip", 0.26, 0.4, 0.06, CFrame.new(0, 0.49 + 1.3, 0), s.metal, s.material)
-	if glow then
-		b:part("Edge", Vector3.new(0.05, 1.2, 0.08), CFrame.new(0.13, 1.1, 0), glow, "Neon")
-	end
+	b:wraps("Wrap", -0.25, 0.25, 0.2, s.grip, 3)
+	b:blade("Blade", 0.24, 1.1, 0.06, 0.49, s, glow)
+	b:tip("Tip", 0.24, 0.4, 0.06, CFrame.new(0, 0.49 + 1.1, 0), s.metal, s.material)
 	return handle
 end
 
@@ -419,6 +459,83 @@ function P.totem(b, s, glow)
 	return body
 end
 
+-- Finishing touches for held weapons. A trail from the blade's base to its tip (it only shows while the weapon
+-- moves, so swings leave a streak and idles stay clean); a glow gets a PointLight (Neon spills no light) and a few
+-- drifting sparkles.
+local function dress(b, primary: BasePart, glow, s)
+	local top, base = -math.huge, math.huge
+	for _, p in b.parts do
+		local half = p.Size / 2
+		for _, x in { -half.X, half.X } do
+			for _, y in { -half.Y, half.Y } do
+				for _, z in { -half.Z, half.Z } do
+					top = math.max(top, (p.CFrame * Vector3.new(x, y, z)).Y)
+				end
+			end
+		end
+		local n = p.Name
+		if string.find(n, "^Blade") or string.find(n, "^Head") or n == "Orb" or n == "Tip" then
+			base = math.min(base, p.Position.Y - p.Size.Y / 2)
+		end
+	end
+	if base == math.huge then
+		base = top - 1.5
+	end
+	if top - base > 0.3 then
+		local inv = primary.CFrame:Inverse()
+		local a0 = Instance.new("Attachment")
+		a0.Name = "TrailBase"
+		a0.CFrame = inv * CFrame.new(0, base + 0.05, 0)
+		a0.Parent = primary
+		local a1 = Instance.new("Attachment")
+		a1.Name = "TrailTip"
+		a1.CFrame = inv * CFrame.new(0, top, 0)
+		a1.Parent = primary
+		local tr = Instance.new("Trail")
+		tr.Name = "SwingTrail"
+		tr.Attachment0, tr.Attachment1 = a0, a1
+		tr.Lifetime = 0.2
+		tr.MinLength = 0.05
+		tr.FaceCamera = true
+		tr.WidthScale = NumberSequence.new(1, 0.2)
+		tr.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 1) })
+		tr.LightEmission = if glow then 1 else 0.5
+		tr.LightInfluence = 0
+		tr.Color = ColorSequence.new(if glow then C(glow) else shade(s.metal, 0.15))
+		tr.Parent = primary
+	end
+	if glow then
+		local core
+		for _, p in b.parts do
+			if p.Material == Enum.Material.Neon and (not core or p.Size.Magnitude > core.Size.Magnitude) then
+				core = p
+			end
+		end
+		if core then
+			local light = Instance.new("PointLight")
+			light.Color = C(glow)
+			light.Brightness = 1.6
+			light.Range = 6
+			light.Shadows = false
+			light.Parent = core
+			local pe = Instance.new("ParticleEmitter")
+			pe.Name = "Enchant"
+			pe.Texture = "rbxassetid://16878181512"
+			pe.Color = ColorSequence.new(C(glow))
+			pe.LightEmission = 1
+			pe.LightInfluence = 0
+			pe.Rate = 8
+			pe.Lifetime = NumberRange.new(0.4, 0.9)
+			pe.Speed = NumberRange.new(0.5, 1.5)
+			pe.SpreadAngle = Vector2.new(180, 180)
+			pe.Drag = 3
+			pe.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.18), NumberSequenceKeypoint.new(1, 0) })
+			pe.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.15), NumberSequenceKeypoint.new(1, 1) })
+			pe.Parent = core
+		end
+	end
+end
+
 ------------------------------------------------------------------------------------------------------ public
 -- cfg: { type, style ("steel"|"dark"|"gold"|"crystal"|"energy"|"wood"), glow (hex or nil), scale, name }
 function ModelKit.build(cfg)
@@ -439,6 +556,9 @@ function ModelKit.build(cfg)
 		primary, extra = W[t.id](b, s, glow, cfg)
 	else
 		primary = P[t.id](b, s, glow, cfg)
+	end
+	if t.kind == "weapon" then
+		dress(b, primary, glow, s)
 	end
 	local model = b:finish(primary, CFrame.identity, cfg.scale)
 	model:SetAttribute("ClipForgeType", t.id)
@@ -490,6 +610,11 @@ function ModelKit.attach(model: Model, rig: Model, hand: string?)
 		weld.C0 = CFrame.new(0, -down, 0) * CFrame.Angles(math.rad(-90), 0, 0)
 	end
 	weld.C1 = if grip then grip.CFrame else CFrame.identity
+	-- Move the whole copy into the hand first. The parts are held to the handle by WeldConstraints, which take
+	-- their offset from where the parts are when they become active: if only the handle jumped to the hand, the
+	-- blade would stay welded wherever the model was built.
+	local handleAt = target.CFrame * weld.C0 * weld.C1:Inverse()
+	copy:PivotTo(handleAt * handle.CFrame:Inverse() * copy:GetPivot())
 	weld.Parent = handle
 	copy.Name = model.Name
 	copy:SetAttribute("ClipForgeHeld", true)

@@ -30,7 +30,7 @@ local TabModels = require(root.TabModels)
 local TabScenes = require(root.TabScenes)
 local TabSettings = require(root.TabSettings)
 
-local VERSION = "1.1.0"
+local VERSION = "1.2.0"
 
 -- settings ---------------------------------------------------------------------------------------------------------
 local function setting(key, default)
@@ -427,9 +427,20 @@ local function buildJob(job, manual: boolean?)
 				if state.previewOnBuild then
 					Anim.preview(rig, kfs, true)
 				end
-				-- a clip with both: an ability that fires the effect at the clip's detected hit
+				-- words with both (e.g. "fire punch"): an ability that fires the effect on every Hit marker
 				local timing = res.vfx and res.vfx.analysis and res.vfx.analysis.timing
-				if res._vfxName and timing and timing.peak then
+				if res._vfxName and res.ability then
+					local hits = {}
+					for _, t in res.ability.at or {} do
+						table.insert(hits, { marker = res.ability.marker or "Hit", at = t, effect = res._vfxName,
+							attach = res.ability.attach or "Front" })
+						break -- one marker entry fires on every Hit (combos included); `at` is the fallback timing
+					end
+					local ab = Installer.saveAbility({ name = kfs.Name .. "Ability", animation = "rbxassetid://0", keyframes = kfs.Name,
+						hits = hits })
+					paths.ability = ab:GetFullName()
+				-- a clip with both: an ability that fires the effect at the clip's detected hit
+				elseif res._vfxName and timing and timing.peak then
 					local ab = Installer.saveAbility({ name = kfs.Name .. "Ability", animation = "rbxassetid://0", keyframes = kfs.Name,
 						hits = { { at = timing.peak, effect = res._vfxName, attach = "Front" } } })
 					paths.ability = ab:GetFullName()
@@ -533,7 +544,20 @@ local function makeActivity(parent, onlyMine: boolean)
 				end, 70)
 				rows[job.id] = r
 			end
-			local kind = if job.kind == "both" then "animation + VFX" else job.kind
+			local kind = job.kind
+			if kind == "auto" and job.summary then -- words: name what the server made of them
+				local made = {}
+				for _, k in { "animation", "vfx", "model", "cutscene" } do
+					if job.summary[k] then
+						table.insert(made, if k == "vfx" then "VFX" else k)
+					end
+				end
+				kind = if #made > 0 then table.concat(made, " + ") else "words"
+			elseif kind == "auto" then
+				kind = "words"
+			elseif kind == "both" then
+				kind = "animation + VFX"
+			end
 			local who = if job.client and job.client ~= "studio" then ("  •  from " .. job.client) else ""
 			r.title.Text = string.format("%s  <font transparency=\"0.4\">%s%s</font>", job.name ~= "" and job.name or (job.source or job.prompt or job.id), kind, who)
 			local color = if job.status == "failed" then UI.BAD elseif job.status == "done" then UI.OK else UI.ACCENT
@@ -566,12 +590,14 @@ end
 local create = pages.Create
 local createStatus
 do
-	local card = UI.card(create, "From a video")
-	UI.dim(card, "Paste a YouTube, Shorts, TikTok, Instagram Reel, X or Reddit link, or the path of a video on this PC.")
-	local src = UI.input(card, "https://www.tiktok.com/@creator/video/…")
-	local kind = UI.segmented(card, { "animation", "vfx", "both" }, setting("Kind", "both"), function(v)
+	local card = UI.card(create, "From a video or words")
+	UI.dim(card, "Paste a YouTube, Shorts, TikTok, Instagram Reel, X or Reddit link or a video file path, or just describe it: \"fire punch\", \"backflip\", \"heavy sword slash\", \"jab then cross then uppercut\".")
+	local src = UI.input(card, "Link, file path, or words: fire punch, backflip, wave…")
+	-- Auto: the server reads the words (an animation, an effect, both as an ability, a model or a cutscene); a clip
+	-- on Auto makes both
+	local kind = UI.segmented(card, { "auto", "animation", "vfx", "both" }, setting("Kind", "auto"), function(v)
 		saveSetting("Kind", v)
-	end, { animation = "Animation", vfx = "VFX", both = "Both" })
+	end, { auto = "Auto", animation = "Animation", vfx = "VFX", both = "Both" })
 	local trimRow = UI.row(card, 6, 32)
 	local startBox = UI.input(trimRow, "Start (s)", "", { Size = UDim2.new(0.25, -4, 1, 0) })
 	local endBox = UI.input(trimRow, "End (s)", "", { Size = UDim2.new(0.25, -4, 1, 0) })
@@ -602,8 +628,8 @@ do
 	local function paintChips()
 		for v, b in chips do
 			local on = v == style
-			b.BackgroundColor3 = if on then UI.ACCENT else UI.color("field")
-			b.TextColor3 = if on then Color3.new(1, 1, 1) else UI.color("text")
+			b.BackgroundColor3 = if on then UI.accent() else UI.color("field")
+			b.TextColor3 = if on then UI.color("onAccent") else UI.color("text")
 		end
 	end
 	for i, v in styles do
@@ -630,9 +656,14 @@ do
 	go.Activated:Connect(function()
 		local s = trim(src.Text)
 		if s == "" then
-			setStatus("Paste a link or a file path first.", UI.WARN)
+			setStatus("Paste a link or a file path, or describe a move or an effect.", UI.WARN)
 			return
 		end
+		-- a link or a video file goes to the video pipeline; anything else is a description
+		local lower = string.lower(s)
+		local isVideo = string.match(lower, "^https?://") ~= nil or string.match(s, "^%a:[\\/]") ~= nil
+			or string.match(lower, "%.mp4$") ~= nil or string.match(lower, "%.mov$") ~= nil or string.match(lower, "%.webm$") ~= nil
+			or string.match(lower, "%.mkv$") ~= nil
 		setStatus("Connecting to the bot server…")
 		task.spawn(function()
 			local okH = Bridge.connected or Bridge.health()
@@ -655,12 +686,23 @@ do
 			if en then
 				options["end"] = en
 			end
-			local payload = { source = s, kind = kind.get(), options = options, client = "studio" }
+			local payload = { kind = kind.get(), options = options, client = "studio" }
+			if isVideo then
+				payload.source = s
+				if trim(steer.Text) ~= "" then
+					payload.prompt = trim(steer.Text)
+				end
+			else
+				-- words: a hand-keyed move and/or an effect (Both links them as an ability on the Hit frame)
+				payload.prompt = s
+				options.loop = if loopT.get() then true else nil
+				options.mirror = if mirrorT.get() then true else nil
+				options.rootMotion = nil
+				options.smoothing = nil
+				options.style = nil
+			end
 			if trim(nameBox.Text) ~= "" then
 				payload.name = trim(nameBox.Text)
-			end
-			if trim(steer.Text) ~= "" then
-				payload.prompt = trim(steer.Text)
 			end
 			local ok, job = Bridge.submit(payload)
 			if ok then

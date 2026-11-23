@@ -3,7 +3,8 @@
   python -m clipforge serve [--port 7313] [--public]     run the bot server (Studio's Bot Link connects to it)
   python -m clipforge mcp                                MCP server for AI bots (stdio)
   python -m clipforge make <link-or-file> [--kind both] [--start 3 --end 9] [--name Dance]
-  python -m clipforge make --prompt "huge purple lightning slash"
+  python -m clipforge make --prompt "fire punch"            (words: an animation, an effect, both, a model...)
+  python -m clipforge make --kind animation --prompt "jab then cross then uppercut"
   python -m clipforge make --kind generate --prompt "golden glowing cube with light wings"
   python -m clipforge make --kind cutscene --prompt 'boss intro "You dare challenge me?"'   (or a clip link)
   python -m clipforge make --kind model --prompt "glowing purple katana"
@@ -31,9 +32,7 @@ def _server_up():
 def cmd_make(a):
     payload = {"kind": a.kind, "client": "cli", "name": a.name, "options": {}}
     if a.prompt:
-        payload["prompt"] = a.prompt
-        if not a.source and a.kind in ("both", "animation"):
-            payload["kind"] = "vfx"
+        payload["prompt"] = a.prompt  # words: auto lets the server read them; animation/vfx/both force it
     if a.source:
         payload["source"] = a.source
     for k in ("start", "end", "style", "rootMotion"):
@@ -100,7 +99,8 @@ def main(argv=None):
     m = sub.add_parser("make")
     m.add_argument("source", nargs="?")
     m.add_argument("--prompt")
-    m.add_argument("--kind", default="both", choices=["animation", "vfx", "both", "generate", "cutscene", "model"])
+    m.add_argument("--kind", default="auto", choices=["auto", "animation", "vfx", "both", "generate", "cutscene", "model"],
+                   help="auto (default): a clip makes both, words are read by the server")
     m.add_argument("--name")
     m.add_argument("--start", type=float)
     m.add_argument("--end", type=float)

@@ -108,8 +108,8 @@ def test_prompt_jobs():
     assert res["cutscene"]["lines"] == ["We did it!"]
     job, res = run({"prompt": "small holy heal"})  # default kind for a prompt is vfx
     assert res["vfx"]["base"] == "heal"
-    for bad in ({"kind": "generate", "source": "x.mp4"}, {"kind": "animation", "prompt": "dance"},
-                {"kind": "model"}, {"kind": "nope", "prompt": "x"}):
+    for bad in ({"kind": "generate", "source": "x.mp4"}, {"kind": "model"}, {"kind": "nope", "prompt": "x"},
+                {"kind": "auto"}):
         try:
             store.create(bad)
         except ValueError:

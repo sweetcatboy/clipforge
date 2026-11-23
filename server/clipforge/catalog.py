@@ -231,4 +231,11 @@ def summary() -> dict:
                                    "green crystal heart with leaves"]},
         "cutscenes": [{k: t[k] for k in ("id", "title")} for t in c["cutscenes"]],
         "models": [{k: t[k] for k in ("id", "title", "kind")} for t in c["models"]],
+        "animations": _moves(),
     }
+
+
+def _moves() -> list[dict]:
+    """The text animation move library (no video needed): attacks, locomotion, reactions, emotes and combos."""
+    from . import text_motion
+    return [{k: m[k] for k in ("id", "title", "category", "loop")} for m in text_motion.catalog()]

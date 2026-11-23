@@ -261,13 +261,15 @@ local function shakeOffset(): CFrame
 		if k >= 1 then
 			table.remove(shakes, i)
 		else
+			-- trauma-style: strength falls off squared, and the camera mostly rotates (up to ~2.6 degrees at amp 1)
+			-- rather than sliding, which reads as a jolt instead of jitter
 			local a = s.amp * (1 - k) * (1 - k)
 			local t = (now - s.start) * s.freq
-			x += math.noise(t, s.seed, 0.5) * a
-			y += math.noise(s.seed, t, 0.5) * a
-			rx += math.noise(t, 0.5, s.seed) * a * 0.025
-			ry += math.noise(0.5, t, s.seed) * a * 0.025
-			rz += math.noise(t, t, s.seed) * a * 0.02
+			x += math.noise(t, s.seed, 0.5) * a * 0.35
+			y += math.noise(s.seed, t, 0.5) * a * 0.35
+			rx += math.noise(t, 0.5, s.seed) * a * 0.045
+			ry += math.noise(0.5, t, s.seed) * a * 0.045
+			rz += math.noise(t, t, s.seed) * a * 0.03
 		end
 	end
 	return CFrame.new(x, y, 0) * CFrame.Angles(rx, ry, rz)
@@ -294,7 +296,7 @@ function FX.shake(amp: number?, dur: number?, freq: number?)
 	if reducedMotion() or not workspace.CurrentCamera then
 		return
 	end
-	table.insert(shakes, { amp = amp or 0.5, dur = math.max(dur or 0.35, 0.05), freq = freq or 18,
+	table.insert(shakes, { amp = amp or 0.5, dur = math.max(dur or 0.35, 0.05), freq = freq or 16,
 		start = os.clock(), seed = math.random() * 100 })
 	if RunService:IsRunning() then
 		-- in a game: run right after the camera scripts, as an offset on top of whatever they set this frame

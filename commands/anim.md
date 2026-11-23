@@ -1,11 +1,16 @@
 ---
-description: Make a Roblox animation (R15/R6) from the body motion in a video clip (e.g. /clipforge:anim https://www.tiktok.com/... loop)
-argument-hint: <link or video file> [start-end] [name] [loop] [mirror] [travel|inplace|locked] [face-forward] [crisp|silky]
+description: Make a Roblox animation (R15/R6) from a video clip's body motion or from words (e.g. /clipforge:anim uppercut, /clipforge:anim https://www.tiktok.com/... loop)
+argument-hint: <link or video file | move words> [start-end] [name] [loop] [mirror] [travel|inplace|locked] [face-forward] [crisp|silky] [with effect]
 ---
 
 Use the `clipforge` skill (ClipForge plugin) to make an animation only (`kind = "animation"`) from: $ARGUMENTS
 
-Run the section 0 ready check, then map the words to options with the section 2 table:
+**No link or file, just words** ("uppercut", "fast sword slash", "jab then cross then hook", "looping idle"): use the
+`clipforge_animation_from_prompt` MCP tool (or REST `{ "prompt": ..., "kind": "animation" }`). "with effect" or
+"with VFX" sets `effect: true` (REST `kind = "both"`): the move's effect fires on its Hit frame as an ability.
+Report the move(s), duration and the Hit marker, then stop here.
+
+**A link or file:** run the section 0 ready check, then map the words to options with the section 2 table:
 
 - `A-B` becomes start/end;
 - `loop` and `mirror`;
