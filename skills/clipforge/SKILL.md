@@ -1,0 +1,135 @@
+---
+name: clipforge
+description: Make Roblox animations and VFX from social-media videos (YouTube, Shorts, TikTok, Instagram Reels, X/Twitter, Reddit, Twitch clips, a local video file) or from a text description, using ClipForge (bot server + Roblox Studio plugin). Use for "turn this TikTok/YouTube dance into a Roblox animation", "make a VFX like this video", "make a huge purple lightning slash effect", setting up or fixing ClipForge, its bot server, the Studio plugin, Bot Link, or connecting a Discord/AI bot to it.
+---
+
+# ClipForge
+
+ClipForge has three parts:
+
+- a local **bot server** (Python) that downloads clips, tracks body pose and reads VFX;
+- a **Roblox Studio plugin** that builds the results in the user's place;
+- **MCP tools**: `clipforge_from_video`, `clipforge_vfx_from_prompt`, `clipforge_job_status`, `clipforge_list_jobs`,
+  `clipforge_presets`.
+
+Windows only.
+
+Paths (resolve them once, quote them, they may contain spaces):
+- `ROOT` = this skill's base directory `/../..` (the plugin root, also `${CLAUDE_PLUGIN_ROOT}`).
+- `CF_HOME` = `$env:CLIPFORGE_HOME`, else `$env:USERPROFILE\.clipforge`. It holds the Python venv, the pose model,
+  jobs and the bot token.
+- `PY` = `CF_HOME\venv\Scripts\python.exe`.
+- Server: `http://127.0.0.1:7313` (`$env:CLIPFORGE_PORT` overrides).
+
+Use PowerShell for every command below.
+
+## 0. Ready check (before any job; quick)
+
+1. **Set up?** `Test-Path "$env:USERPROFILE\.clipforge\venv\Scripts\python.exe"`. If not, do section 1 first.
+2. **Server up?** `Invoke-RestMethod http://127.0.0.1:7313/api/health` must return `name = ClipForge`.
+   - If not, start it in the background (keep it running): `powershell -ExecutionPolicy Bypass -File "<ROOT>\start-server.ps1"`.
+   - Poll health once a second for up to 20 s.
+   - If the MCP tools are connected, they start a server inside the MCP process by themselves.
+3. **Studio plugin installed?** `Test-Path "$env:LOCALAPPDATA\Roblox\Plugins\ClipForge.rbxmx"`. If not, do section 1 step 3.
+
+## 1. Setup (`/clipforge:setup`)
+
+1. `powershell -ExecutionPolicy Bypass -File "<ROOT>\setup.ps1"`. Run it in the background and wait: it creates the
+   Python 3.12 env with uv, installs MediaPipe, OpenCV and yt-dlp, and downloads the pose model. It takes a few
+   minutes the first time.
+   - If `uv` is missing, the script installs it with winget, which asks the user first.
+   - `ffmpeg` is needed. If the script warns that it is missing, tell the user to run `winget install Gyan.FFmpeg`
+     and reopen the terminal.
+2. Check: `& "<PY>" -c "import mediapipe, cv2, yt_dlp; print('ok')"`.
+3. Studio plugin: `& "<PY>" "<ROOT>\scripts\build_plugin.py" --install`. This writes
+   `%LOCALAPPDATA%\Roblox\Plugins\ClipForge.rbxmx`, and Studio reloads local plugins on its own.
+4. Start the server (section 0.2).
+5. Tell the user:
+   - "In Studio: Plugins tab > ClipForge, allow it to reach 127.0.0.1 when asked. Turn on **Bot Link** in the Bots tab
+     so jobs made here build in that place."
+   - If the `clipforge` MCP server showed as failed before setup, reconnect it with `/mcp`.
+6. Tests, when the user asks for a check: `& "<PY>" "<ROOT>\server\tests\test_motion.py"` and
+   `test_vfx.py` (run from `<ROOT>\server`).
+
+## 2. Make things
+
+Prefer the MCP tools when they are listed. Otherwise use the REST API:
+
+```powershell
+$body = @{ source = "<link or file path>"; kind = "both"; name = "DanceMove"; client = "claude"
+           options = @{ start = 3; end = 9; rootMotion = "inplace"; loop = $true } } | ConvertTo-Json -Depth 5
+$job = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:7313/api/jobs -ContentType "application/json" -Body $body
+Invoke-RestMethod "http://127.0.0.1:7313/api/jobs/$($job.id)?wait=240"     # long-poll until done/failed
+```
+
+- **From a clip:** `kind` is `animation` (body motion), `vfx` (the effect in it) or `both`. Body tracking runs at
+  roughly real time on a CPU: a 15 s clip takes about 0.5-2 min, so tell the user it is working.
+- **From a description:** `{ "prompt": "huge purple lightning slash", "kind": "vfx" }` returns in about a second.
+  A prompt next to a `source` steers the VFX read ("make it purple", "slash").
+- Turn the user's words into `options`:
+
+| User says | options |
+|---|---|
+| only part of the clip ("3 to 9 s", "the jump at 0:12") | `start`, `end` in seconds |
+| loop / idle / dance loop | `loop: true` |
+| mirror / other hand | `mirror: true` |
+| walks or runs across, travel | `rootMotion: "full"` (default `inplace` keeps sway, drops travel; `none` locks hips) |
+| attack, emote, must face forward | `lockFacing: true` |
+| jittery / smoother / snappier | `smoothing` 0.25 crisp, 0.5 default, 0.8 silky |
+| a VFX type ("it's a slash", "explosion") | `style`: slash, impact, explosion, aura, beam, lightning, projectile, fire, ice, dark, holy |
+| bigger / smaller, faster / slower effect | `scale` (1 = default, 1.6 huge), `speed` |
+
+- Name things in PascalCase when the user gives a name (`name`). Otherwise ClipForge uses the clip title.
+
+## 3. Getting it into Studio
+
+The plugin builds finished jobs by itself in any Studio window where:
+
+- the ClipForge widget is open and **Bot Link** is on (Bots tab), or
+- the job was started from the plugin's Create tab.
+
+Results go to:
+
+- **VFX:** `ReplicatedStorage.ClipForge.Effects.<Name>`, a small config module, plus the runtime `FX`, `VFXTimeline`,
+  `Recolor` and `Recipes`. In a LocalScript:
+  `require(game.ReplicatedStorage.ClipForge.FX).play("<Name>", cframe)`.
+- **Animation:** `ServerStorage.ClipForge.Animations.<Name>`, a KeyframeSequence. `MotionData` holds the raw motion for
+  re-baking. A copy goes to `ServerStorage.RBX_ANIMSAVES.<rig>` for the Animation Editor. The plugin's
+  **Animations > Publish** uploads it and returns an asset id.
+
+If the Roblox Studio MCP is connected, you may check that the instances exist (read only). Ask before changing
+the user's place.
+
+## 4. Report back
+
+Say what was made, its name and where it is in Studio. For VFX, also give:
+
+- the archetype and confidence from `summary.vfx`;
+- the palette hex codes;
+- the contact sheet of what the reader saw, `CF_HOME\data\jobs\<id>\sheet.jpg`. Open it with Read and describe it
+  in one line.
+
+For animations, also give the duration, the key count and `quality.detectedRatio`. Below 0.8, suggest a clip where
+the whole body stays in frame.
+
+If the job's `delivered` flag is false, remind the user to turn on Bot Link in Studio.
+
+## 5. Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| "No person was detected" | One person, whole body visible, steady camera. Trim with `start`/`end` to the clean part. A `both` job still delivers the VFX. |
+| Download error mentioning login, cookies or private | The post needs a login. The user exports `cookies.txt` from their browser and sets `CLIPFORGE_COOKIES=<path>` before starting the server. Never read browser cookie stores yourself. |
+| Studio: "Http requests are not enabled" or no build | Allow ClipForge in Studio's Plugin Management (HTTP to 127.0.0.1), open the widget, press Connect, turn on Bot Link. |
+| Port 7313 busy | Another server is running (fine), or set `CLIPFORGE_PORT` and the plugin's server address to match. |
+| MediaPipe import fails with a missing module | Path too long: the venv must stay in `CF_HOME` (short path). Re-run setup. |
+| Effect looks too small or big, or too fast | Rerun with `scale`/`speed`, or edit the numbers in the effect's config module. |
+
+## 6. Bots
+
+- Any bot posts to `POST /api/jobs` (fields in `ROOT\README.md`). `ROOT\examples\discord_bot.py` is a ready-made
+  Discord bot with `!clip`, `!anim` and `!vfx`.
+- Bots on another machine need `start-server.ps1 -Public` and `Authorization: Bearer <CF_HOME\data\bot_token.txt>`.
+- Requests that carry a browser `Origin` header are refused, so a website can't drive the server.
+
+Only use clips the user has the right to use. Downloads stay on this PC, for analysis only.

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "clipforge": {
+      "command": "cmd",
+      "args": ["/c", "${CLAUDE_PLUGIN_ROOT}\\scripts\\clipforge-mcp.cmd"]
+    }
+  }
+}

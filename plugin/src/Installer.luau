@@ -1,0 +1,251 @@
+-- ClipForge Installer: puts what a game needs into the place (with undo).
+--   ReplicatedStorage.ClipForge          FX runtime (VFXTimeline, Recolor, FX, Recipes) + Effects (configs)
+--   ServerStorage.ClipForge.Animations   KeyframeSequences made from videos
+--   ServerStorage.ClipForge.MotionData   the raw motion of each animation (re-bake on another rig any time)
+--   ServerStorage.RBX_ANIMSAVES          copies the Animation Editor can open
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
+local HttpService = game:GetService("HttpService")
+
+local Installer = {}
+local pluginRoot = script.Parent
+
+local RUNTIME = { "VFXTimeline", "Recolor", "FX" }
+
+local function folder(parent: Instance, name: string): Folder
+	local f = parent:FindFirstChild(name)
+	if not f then
+		f = Instance.new("Folder")
+		f.Name = name
+		f.Parent = parent
+	end
+	return f :: Folder
+end
+
+local function sourceOf(m: Instance): string
+	return (m :: any).Source
+end
+
+-- Copies (or refreshes) the runtime modules into ReplicatedStorage.ClipForge. Effects already there are kept.
+function Installer.ensureRuntime(): Folder
+	local rs = folder(ReplicatedStorage, "ClipForge")
+	for _, name in RUNTIME do
+		local src = pluginRoot:FindFirstChild(name)
+		local dst = rs:FindFirstChild(name)
+		if not dst or sourceOf(dst) ~= sourceOf(src) then
+			if dst then
+				dst:Destroy()
+			end
+			local c = src:Clone()
+			c.Parent = rs
+		end
+	end
+	local recipes = folder(rs, "Recipes")
+	for _, src in pluginRoot.Recipes:GetChildren() do
+		local dst = recipes:FindFirstChild(src.Name)
+		if not dst or sourceOf(dst) ~= sourceOf(src) then
+			if dst then
+				dst:Destroy()
+			end
+			src:Clone().Parent = recipes
+		end
+	end
+	folder(rs, "Effects")
+	if not rs:FindFirstChild("README") then
+		local readme = Instance.new("ModuleScript")
+		readme.Name = "README"
+		readme.Source = table.concat({
+			"--[[ ClipForge effects",
+			"",
+			"Play an effect (on the client; from the server, fire a RemoteEvent and play it on each client):",
+			"",
+			"    local FX = require(game.ReplicatedStorage.ClipForge.FX)",
+			"    FX.preload(\"MyEffect\")                                  -- once, so the first play has its textures",
+			"    FX.play(\"MyEffect\", humanoidRootPart.CFrame * CFrame.new(0, 0, -4))",
+			"    FX.play(\"MyEffect\", somePart, { scale = 1.5, speed = 0.8 })",
+			"",
+			"Each module in Effects/ is a plain config (base recipe, palette, scale, speed, roll, parts).",
+			"Edit the numbers and replay with the ClipForge plugin. Effect runtime and recipes: vfxmith (MIT).",
+			"]]",
+			"return nil",
+		}, "\n")
+		readme.Parent = rs
+	end
+	return rs
+end
+
+-- Luau source for a plain-data table (configs are numbers, strings, booleans and nested tables).
+local function isArray(t)
+	local n = 0
+	for k in t do
+		if type(k) ~= "number" then
+			return false
+		end
+		n += 1
+	end
+	return n == #t
+end
+
+local function serialize(v, indent: string): string
+	local t = type(v)
+	if t == "string" then
+		return string.format("%q", v)
+	elseif t == "number" then
+		if v == math.floor(v) and math.abs(v) < 1e15 then
+			return tostring(math.floor(v))
+		end
+		return string.format("%.4g", v)
+	elseif t == "boolean" or t == "nil" then
+		return tostring(v)
+	elseif t == "table" then
+		local inner = indent .. "\t"
+		local parts = {}
+		if isArray(v) then
+			local simple = true
+			for _, x in v do
+				if type(x) == "table" then
+					simple = false
+				end
+			end
+			for _, x in v do
+				table.insert(parts, serialize(x, inner))
+			end
+			if simple then
+				return "{ " .. table.concat(parts, ", ") .. " }"
+			end
+			return "{\n" .. inner .. table.concat(parts, ",\n" .. inner) .. ",\n" .. indent .. "}"
+		end
+		local keys = {}
+		for k in v do
+			table.insert(keys, k)
+		end
+		table.sort(keys, function(a, b)
+			return tostring(a) < tostring(b)
+		end)
+		for _, k in keys do
+			local key = if type(k) == "string" and string.match(k, "^[%a_][%w_]*$") then k else "[" .. serialize(k, inner) .. "]"
+			table.insert(parts, key .. " = " .. serialize(v[k], inner))
+		end
+		if #parts == 0 then
+			return "{}"
+		end
+		return "{\n" .. inner .. table.concat(parts, ",\n" .. inner) .. ",\n" .. indent .. "}"
+	end
+	return "nil"
+end
+Installer.serialize = serialize
+
+local function uniqueName(parent: Instance, name: string): string
+	name = string.gsub(name, "[^%w_]", "")
+	if name == "" then
+		name = "Effect"
+	end
+	if not parent:FindFirstChild(name) then
+		return name
+	end
+	local i = 2
+	while parent:FindFirstChild(name .. i) do
+		i += 1
+	end
+	return name .. i
+end
+
+-- Writes an effect config as ReplicatedStorage.ClipForge.Effects.<Name>. Returns the ModuleScript.
+function Installer.saveEffect(config, overwrite: boolean?): ModuleScript
+	local rs = Installer.ensureRuntime()
+	local effects = rs:FindFirstChild("Effects")
+	local clean = {
+		name = config.name,
+		base = config.base,
+		archetype = config.archetype,
+		description = config.description,
+		palette = config.palette,
+		scale = config.scale,
+		speed = config.speed,
+		intensity = config.intensity,
+		roll = config.roll,
+		yaw = config.yaw,
+		parts = config.parts,
+		prompt = config.prompt,
+	}
+	local name = string.gsub(config.name or "Effect", "[^%w_]", "")
+	local existing = effects:FindFirstChild(name)
+	if existing and overwrite then
+		existing:Destroy()
+	else
+		name = uniqueName(effects, name)
+	end
+	clean.name = name
+	local src = config.source and config.source.url and ("-- Made by ClipForge from " .. config.source.url .. "\n") or "-- Made by ClipForge\n"
+	if config.analysis and config.analysis.confidence then
+		src ..= string.format("-- Read as: %s (%d%% sure)\n", tostring(config.description or config.archetype), math.floor(config.analysis.confidence * 100))
+	end
+	local m = Instance.new("ModuleScript")
+	m.Name = name
+	m.Source = src .. "-- Play: require(game.ReplicatedStorage.ClipForge.FX).play(\"" .. name .. "\", cframe)\nreturn " .. serialize(clean, "") .. "\n"
+	m:SetAttribute("ClipForge", true)
+	m.Parent = effects
+	return m
+end
+
+-- Stores an animation: KeyframeSequence in ServerStorage.ClipForge.Animations (+ motion data, + Animation Editor copy).
+function Installer.saveAnimation(kfs: KeyframeSequence, data, rig: Model?): KeyframeSequence
+	local cf = folder(ServerStorage, "ClipForge")
+	local anims = folder(cf, "Animations")
+	kfs.Name = uniqueName(anims, kfs.Name)
+	kfs.Parent = anims
+	-- raw motion, so the same clip can be re-baked on another rig or with other options
+	local md = folder(cf, "MotionData")
+	local old = md:FindFirstChild(kfs.Name)
+	if old then
+		old:Destroy()
+	end
+	local holder = Instance.new("ModuleScript")
+	holder.Name = kfs.Name
+	local json = HttpService:JSONEncode(data)
+	holder.Source = "-- ClipForge motion data (JSON). Used by the plugin to re-bake this animation.\nreturn [==[" .. json .. "]==]\n"
+	holder.Parent = md
+	if rig then
+		Installer.sendToAnimationEditor(kfs, rig)
+	end
+	return kfs
+end
+
+-- The Animation Editor lists saves from ServerStorage.RBX_ANIMSAVES.<rig name>.
+function Installer.sendToAnimationEditor(kfs: KeyframeSequence, rig: Model)
+	local saves = ServerStorage:FindFirstChild("RBX_ANIMSAVES")
+	if not saves then
+		saves = Instance.new("Model")
+		saves.Name = "RBX_ANIMSAVES"
+		saves.Parent = ServerStorage
+	end
+	local slot = saves:FindFirstChild(rig.Name)
+	if not slot then
+		slot = Instance.new("ObjectValue")
+		slot.Name = rig.Name
+		slot.Value = rig
+		slot.Parent = saves
+	end
+	local existing = slot:FindFirstChild(kfs.Name)
+	if existing then
+		existing:Destroy()
+	end
+	kfs:Clone().Parent = slot
+end
+
+function Installer.motionData(name: string)
+	local md = ServerStorage:FindFirstChild("ClipForge") and ServerStorage.ClipForge:FindFirstChild("MotionData")
+	local holder = md and md:FindFirstChild(name)
+	if not holder then
+		return nil
+	end
+	local json = string.match((holder :: any).Source, "%[==%[(.*)%]==%]")
+	if not json then
+		return nil
+	end
+	local ok, data = pcall(HttpService.JSONDecode, HttpService, json)
+	return if ok then data else nil
+end
+
+return Installer

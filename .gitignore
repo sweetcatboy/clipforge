@@ -1,0 +1,8 @@
+server/data/
+server/models/
+server/.venv/
+server/.python/
+dist/
+test/
+__pycache__/
+*.pyc
