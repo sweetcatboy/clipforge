@@ -2,7 +2,10 @@
 
     !clip <link>          animation + VFX from a YouTube / TikTok / Instagram / X link
     !anim <link> [3-9]    animation only (optional start-end seconds)
-    !vfx  <link or text>  VFX from a clip, or from a description ("huge purple lightning slash")
+    !vfx  <link or text>  VFX from a clip, or from a description ("huge purple lightning slash", "coin burst")
+    !gen  <text>          a showcase VFX from the generator ("golden glowing cube with light wings")
+    !cutscene <text|link> a cutscene from a description ('boss intro "You dare?"') or a clip's camera work
+    !model <text>         a weapon or prop ("glowing purple katana")
 
 Setup:  <venv>\\Scripts\\python.exe -m pip install discord.py
         set DISCORD_TOKEN=<your bot token>      (enable the Message Content intent for the bot)
@@ -49,12 +52,22 @@ async def on_message(msg: discord.Message):
         return
     text = msg.content.strip()
     cmd = text.split(" ", 1)[0].lower()
-    if cmd not in ("!clip", "!anim", "!vfx"):
+    if cmd not in ("!clip", "!anim", "!vfx", "!gen", "!cutscene", "!model"):
         return
     rest = text[len(cmd):].strip()
     link = LINK.search(rest)
     payload = {"client": "discord", "options": {}}
-    if cmd == "!vfx" and not link:
+    if cmd in ("!gen", "!model"):
+        if not rest:
+            return await msg.reply("Describe it, e.g. `!gen golden glowing cube with light wings` or `!model glowing purple katana`")
+        payload.update(prompt=rest, kind="generate" if cmd == "!gen" else "model")
+    elif cmd == "!cutscene":
+        if not rest:
+            return await msg.reply('Describe it, e.g. `!cutscene boss intro "You dare challenge me?"`, or post a trailer link')
+        payload.update(kind="cutscene", prompt=rest.replace(link.group(0), "").strip() if link else rest)
+        if link:
+            payload["source"] = link.group(0)
+    elif cmd == "!vfx" and not link:
         if not rest:
             return await msg.reply("Describe an effect, e.g. `!vfx huge purple lightning slash`")
         payload.update(prompt=rest, kind="vfx")

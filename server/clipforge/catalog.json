@@ -1,0 +1,1319 @@
+{
+ "effects": [
+  {
+   "id": "slash",
+   "title": "Slash",
+   "category": "Combat",
+   "tags": "sword cut swipe crescent blade katana",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "impact",
+   "title": "Ground Slam",
+   "category": "Combat",
+   "tags": "slam punch smash stomp ground",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "hitspark",
+   "title": "Hit Spark",
+   "category": "Combat",
+   "tags": "hit spark small impact sword clash",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "punch",
+   "title": "Punch Impact",
+   "category": "Combat",
+   "tags": "punch fist hit impact boxing",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "critical",
+   "title": "Critical Hit",
+   "category": "Combat",
+   "tags": "critical crit big hit heavy finisher",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "parry",
+   "title": "Parry Clash",
+   "category": "Combat",
+   "tags": "parry block clash deflect metal sparks guard",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "uppercut",
+   "title": "Uppercut Launch",
+   "category": "Combat",
+   "tags": "uppercut launch rising air juggle",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "shockwave",
+   "title": "Shockwave",
+   "category": "Combat",
+   "tags": "shockwave blast ring stomp aoe wave",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "groundpound",
+   "title": "Crater Slam",
+   "category": "Combat",
+   "tags": "crater slam rocks earth smash ground pound",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "thrust",
+   "title": "Spear Thrust",
+   "category": "Combat",
+   "tags": "thrust stab spear lance pierce rapier",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "xslash",
+   "title": "Cross Slash",
+   "category": "Combat",
+   "tags": "x slash cross double sword combo",
+   "ambient": false,
+   "hidden": false,
+   "combo": true
+  },
+  {
+   "id": "slashcombo",
+   "title": "Slash Combo",
+   "category": "Combat",
+   "tags": "combo triple slash sword finisher",
+   "ambient": false,
+   "hidden": false,
+   "combo": true
+  },
+  {
+   "id": "explosion",
+   "title": "Explosion",
+   "category": "Elements",
+   "tags": "explosion boom blast bomb fireball",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "fire",
+   "title": "Fire Eruption",
+   "category": "Elements",
+   "tags": "fire flame burn eruption",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "lightning",
+   "title": "Lightning Strike",
+   "category": "Elements",
+   "tags": "lightning thunder strike bolt electric",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "icewater",
+   "title": "Frost Burst",
+   "category": "Elements",
+   "tags": "ice frost freeze cold burst water",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "projectile",
+   "title": "Projectile",
+   "category": "Elements",
+   "tags": "projectile orb fireball shot bullet",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "flamejet",
+   "title": "Flame Jet",
+   "category": "Elements",
+   "tags": "flamethrower fire breath jet stream dragon",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "firepillar",
+   "title": "Fire Pillar",
+   "category": "Elements",
+   "tags": "fire pillar column flame geyser inferno",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "meteorfall",
+   "title": "Meteor Fall",
+   "category": "Elements",
+   "tags": "",
+   "ambient": false,
+   "hidden": true,
+   "combo": false
+  },
+  {
+   "id": "meteor",
+   "title": "Meteor Strike",
+   "category": "Elements",
+   "tags": "meteor comet asteroid strike sky fall",
+   "ambient": false,
+   "hidden": false,
+   "combo": true
+  },
+  {
+   "id": "electricburst",
+   "title": "Electric Burst",
+   "category": "Elements",
+   "tags": "electric shock zap crackle static plasma",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "thunder",
+   "title": "Thunder Pillar",
+   "category": "Elements",
+   "tags": "thunder pillar lightning sky judgment strike",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "icespikes",
+   "title": "Ice Spikes",
+   "category": "Elements",
+   "tags": "ice spikes crystal frost erupt shards",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "watersplash",
+   "title": "Water Splash",
+   "category": "Elements",
+   "tags": "water splash wave liquid drop aqua",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "tornado",
+   "title": "Tornado",
+   "category": "Elements",
+   "tags": "tornado wind cyclone whirlwind vortex twister",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "windgust",
+   "title": "Wind Gust",
+   "category": "Elements",
+   "tags": "wind gust push blow air breeze",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "poison",
+   "title": "Poison Cloud",
+   "category": "Elements",
+   "tags": "poison toxic gas cloud acid venom",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "aura",
+   "title": "Aura Charge",
+   "category": "Magic",
+   "tags": "aura charge power up transform ki",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "beam",
+   "title": "Beam",
+   "category": "Magic",
+   "tags": "beam laser ray cannon kamehameha",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "darkportal",
+   "title": "Void Breach",
+   "category": "Magic",
+   "tags": "void dark portal rift shadow curse",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "misc",
+   "title": "Holy Burst",
+   "category": "Magic",
+   "tags": "holy light divine angel bless radiant",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "heal",
+   "title": "Heal",
+   "category": "Magic",
+   "tags": "heal health regen restore cure",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "buff",
+   "title": "Power Buff",
+   "category": "Magic",
+   "tags": "buff power up strength boost enrage",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "shield",
+   "title": "Shield Bubble",
+   "category": "Magic",
+   "tags": "shield barrier bubble protect forcefield block",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "magiccircle",
+   "title": "Summoning Circle",
+   "category": "Magic",
+   "tags": "magic circle summon rune ritual sigil",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "teleport",
+   "title": "Teleport",
+   "category": "Magic",
+   "tags": "teleport blink warp vanish appear dash",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "blackhole",
+   "title": "Black Hole",
+   "category": "Magic",
+   "tags": "black hole singularity gravity void collapse vortex",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "holybeam",
+   "title": "Holy Pillar",
+   "category": "Magic",
+   "tags": "holy pillar heaven light beam judgment divine",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "chargeball",
+   "title": "Energy Charge",
+   "category": "Magic",
+   "tags": "charge orb energy ball spirit bomb gather",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "spellcast",
+   "title": "Spell Cast",
+   "category": "Magic",
+   "tags": "spell cast hand magic wand quick",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "dash",
+   "title": "Dash Burst",
+   "category": "Movement",
+   "tags": "dash sprint rush speed burst air",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "speedboost",
+   "title": "Speed Boost",
+   "category": "Movement",
+   "tags": "speed boost haste fast sprint",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "landing",
+   "title": "Landing Dust",
+   "category": "Movement",
+   "tags": "landing land jump fall dust heavy",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "footstep",
+   "title": "Footstep Puff",
+   "category": "Movement",
+   "tags": "footstep step walk run dust puff",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "doublejump",
+   "title": "Double Jump",
+   "category": "Movement",
+   "tags": "double jump air jump hop wings",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "levelup",
+   "title": "Level Up",
+   "category": "Game feel",
+   "tags": "level up rank promotion upgrade achievement",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "pickup",
+   "title": "Coin Pickup",
+   "category": "Game feel",
+   "tags": "coin pickup collect gem item sparkle reward",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "spawn",
+   "title": "Spawn In",
+   "category": "Game feel",
+   "tags": "spawn respawn appear arrive portal in",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "checkpoint",
+   "title": "Checkpoint",
+   "category": "Game feel",
+   "tags": "checkpoint save flag reach goal",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "defeat",
+   "title": "Defeat Poof",
+   "category": "Game feel",
+   "tags": "defeat death die poof kill despawn knockout",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "confetti",
+   "title": "Confetti Burst",
+   "category": "Game feel",
+   "tags": "confetti party celebrate win victory birthday",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "firework",
+   "title": "Firework",
+   "category": "Game feel",
+   "tags": "firework celebrate new year rocket burst party",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "campfire",
+   "title": "Campfire",
+   "category": "Ambient",
+   "tags": "campfire fire camp bonfire loop",
+   "ambient": true,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "torch",
+   "title": "Torch Flame",
+   "category": "Ambient",
+   "tags": "torch flame candle lamp loop",
+   "ambient": true,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "rain",
+   "title": "Rain",
+   "category": "Ambient",
+   "tags": "rain weather storm drizzle loop",
+   "ambient": true,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "snow",
+   "title": "Snowfall",
+   "category": "Ambient",
+   "tags": "snow snowfall winter weather flakes loop",
+   "ambient": true,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "fireflies",
+   "title": "Fireflies",
+   "category": "Ambient",
+   "tags": "fireflies night forest glow bugs loop",
+   "ambient": true,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "mist",
+   "title": "Ground Mist",
+   "category": "Ambient",
+   "tags": "mist fog haze ground spooky loop",
+   "ambient": true,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "sparkleloop",
+   "title": "Magic Sparkles",
+   "category": "Ambient",
+   "tags": "sparkle twinkle magic item glow idle loop",
+   "ambient": true,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "embersloop",
+   "title": "Floating Embers",
+   "category": "Ambient",
+   "tags": "embers ash volcano lava hell loop",
+   "ambient": true,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "spinslash",
+   "title": "Spin Slash",
+   "category": "Combat",
+   "tags": "spin whirlwind sweep spinning cyclone sword",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "clawstrike",
+   "title": "Claw Strike",
+   "category": "Combat",
+   "tags": "claw scratch beast wolf feral rake talon",
+   "ambient": false,
+   "hidden": false,
+   "combo": true
+  },
+  {
+   "id": "bloodsplat",
+   "title": "Blood Splatter",
+   "category": "Combat",
+   "tags": "blood splatter gore bleed wound damage",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "stun",
+   "title": "Stun Stars",
+   "category": "Combat",
+   "tags": "stun dizzy daze stunned knocked status",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "muzzleflash",
+   "title": "Muzzle Flash",
+   "category": "Combat",
+   "tags": "muzzle gun pistol rifle shoot firearm",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "bulletimpact",
+   "title": "Bullet Impact",
+   "category": "Combat",
+   "tags": "bullet ricochet gunshot wall spark hole",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "punchbarrage",
+   "title": "Punch Barrage",
+   "category": "Combat",
+   "tags": "barrage rapid punches flurry multi hit rush",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "knockback",
+   "title": "Knockback Blast",
+   "category": "Combat",
+   "tags": "knockback push repel force blowback",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "earthquake",
+   "title": "Earthquake",
+   "category": "Elements",
+   "tags": "quake tremor rumble fissure seismic crack",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "earthspikes",
+   "title": "Earth Spikes",
+   "category": "Elements",
+   "tags": "rock stone spikes wave erupt boulder",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "lavaburst",
+   "title": "Lava Burst",
+   "category": "Elements",
+   "tags": "lava magma molten volcano eruption",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "iceshatter",
+   "title": "Ice Shatter",
+   "category": "Elements",
+   "tags": "shatter frozen shards glass smash break",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "frostnova",
+   "title": "Frost Nova",
+   "category": "Elements",
+   "tags": "nova freeze chill blizzard aoe cold",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "chainlightning",
+   "title": "Chain Lightning",
+   "category": "Elements",
+   "tags": "chain arc jump bolt electric zap multi",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "steamburst",
+   "title": "Steam Burst",
+   "category": "Elements",
+   "tags": "steam vapor hiss geyser vent",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "acidsplash",
+   "title": "Acid Splash",
+   "category": "Elements",
+   "tags": "acid corrosive slime goo spit ooze",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "smokebomb",
+   "title": "Smoke Bomb",
+   "category": "Magic",
+   "tags": "bomb ninja vanish escape cloud stealth hide",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "curse",
+   "title": "Curse Mark",
+   "category": "Magic",
+   "tags": "curse hex dark debuff doom sigil shadow",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "lifedrain",
+   "title": "Life Drain",
+   "category": "Magic",
+   "tags": "drain siphon steal vampire leech soul absorb",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "arcanebolt",
+   "title": "Arcane Bolt",
+   "category": "Magic",
+   "tags": "arcane missile spell mage shot magic",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "shieldbreak",
+   "title": "Shield Break",
+   "category": "Magic",
+   "tags": "guard broken barrier shatter crack",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "manaburst",
+   "title": "Mana Burst",
+   "category": "Magic",
+   "tags": "mana arcane energy release nova blast",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "timestop",
+   "title": "Time Stop",
+   "category": "Magic",
+   "tags": "time freeze slow world clock pause stop",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "starfall",
+   "title": "Star Fall",
+   "category": "Magic",
+   "tags": "starfall shower sky rain stars celestial",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "superjump",
+   "title": "Super Jump",
+   "category": "Movement",
+   "tags": "leap launch high takeoff spring",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "launchpad",
+   "title": "Launch Pad",
+   "category": "Movement",
+   "tags": "pad bounce boost trampoline booster",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "slidedust",
+   "title": "Slide Dust",
+   "category": "Movement",
+   "tags": "slide skid drift trail sprint",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "jetburst",
+   "title": "Jet Burst",
+   "category": "Movement",
+   "tags": "jet jetpack thruster rocket hover propulsion",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "coinburst",
+   "title": "Coin Burst",
+   "category": "Game feel",
+   "tags": "coins money cash gold shower payout jackpot",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "egghatch",
+   "title": "Egg Hatch",
+   "category": "Game feel",
+   "tags": "egg hatch pet reveal crack open simulator rarity",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "lootbeam",
+   "title": "Loot Beam",
+   "category": "Game feel",
+   "tags": "loot drop rarity legendary item marker glow",
+   "ambient": true,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "questcomplete",
+   "title": "Quest Complete",
+   "category": "Game feel",
+   "tags": "quest mission done success objective",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "rebirth",
+   "title": "Rebirth",
+   "category": "Game feel",
+   "tags": "prestige reborn ascend rank power rainbow",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "xpgain",
+   "title": "XP Gain",
+   "category": "Game feel",
+   "tags": "xp experience exp orbs points progress",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "bossspawn",
+   "title": "Boss Spawn",
+   "category": "Game feel",
+   "tags": "boss arrive summon emerge villain entrance dramatic",
+   "ambient": false,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "fallingleaves",
+   "title": "Falling Leaves",
+   "category": "Ambient",
+   "tags": "leaves autumn fall forest tree loop",
+   "ambient": true,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "petals",
+   "title": "Cherry Blossoms",
+   "category": "Ambient",
+   "tags": "cherry blossom petals sakura spring flowers loop",
+   "ambient": true,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "bubbles",
+   "title": "Bubbles",
+   "category": "Ambient",
+   "tags": "bubbles underwater water fish tank loop",
+   "ambient": true,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "wisps",
+   "title": "Spirit Wisps",
+   "category": "Ambient",
+   "tags": "wisps spirit ghost souls spooky haunted glow loop",
+   "ambient": true,
+   "hidden": false,
+   "combo": false
+  },
+  {
+   "id": "godrays",
+   "title": "Light Rays",
+   "category": "Ambient",
+   "tags": "god rays sunbeams shafts sunlight heavenly loop",
+   "ambient": true,
+   "hidden": false,
+   "combo": false
+  }
+ ],
+ "cutscenes": [
+  {
+   "id": "intro",
+   "title": "Boss Intro",
+   "tags": "boss intro entrance villain enemy appear"
+  },
+  {
+   "id": "victory",
+   "title": "Victory",
+   "tags": "victory win celebrate champion"
+  },
+  {
+   "id": "reveal",
+   "title": "Dramatic Reveal",
+   "tags": "reveal dramatic show unveil discover"
+  },
+  {
+   "id": "ability",
+   "title": "Ability Showcase",
+   "tags": "ability attack skill move special ultimate showcase"
+  },
+  {
+   "id": "flyover",
+   "title": "Map Flyover",
+   "tags": "flyover establishing map world area tour overview"
+  },
+  {
+   "id": "dialogue",
+   "title": "Dialogue",
+   "tags": "dialogue talk conversation chat story npc"
+  },
+  {
+   "id": "defeat",
+   "title": "Defeat",
+   "tags": "defeat death die lose game over"
+  }
+ ],
+ "models": [
+  {
+   "id": "sword",
+   "title": "Sword",
+   "kind": "weapon",
+   "tags": "sword longsword blade knight"
+  },
+  {
+   "id": "katana",
+   "title": "Katana",
+   "kind": "weapon",
+   "tags": "katana samurai sword blade curved"
+  },
+  {
+   "id": "greatsword",
+   "title": "Greatsword",
+   "kind": "weapon",
+   "tags": "greatsword claymore big sword zweihander"
+  },
+  {
+   "id": "dagger",
+   "title": "Dagger",
+   "kind": "weapon",
+   "tags": "dagger knife kunai short blade"
+  },
+  {
+   "id": "axe",
+   "title": "Axe",
+   "kind": "weapon",
+   "tags": "axe battleaxe hatchet"
+  },
+  {
+   "id": "spear",
+   "title": "Spear",
+   "kind": "weapon",
+   "tags": "spear lance pike trident halberd"
+  },
+  {
+   "id": "staff",
+   "title": "Staff",
+   "kind": "weapon",
+   "tags": "staff mage wizard rod"
+  },
+  {
+   "id": "wand",
+   "title": "Wand",
+   "kind": "weapon",
+   "tags": "wand magic stick"
+  },
+  {
+   "id": "scythe",
+   "title": "Scythe",
+   "kind": "weapon",
+   "tags": "scythe reaper death sickle"
+  },
+  {
+   "id": "hammer",
+   "title": "Hammer",
+   "kind": "weapon",
+   "tags": "hammer warhammer mallet maul"
+  },
+  {
+   "id": "shield",
+   "title": "Shield",
+   "kind": "shield",
+   "tags": "shield buckler guard"
+  },
+  {
+   "id": "orb",
+   "title": "Magic Orb",
+   "kind": "prop",
+   "tags": "orb sphere ball magic"
+  },
+  {
+   "id": "crystals",
+   "title": "Crystal Cluster",
+   "kind": "prop",
+   "tags": "crystal crystals gem cluster ore"
+  },
+  {
+   "id": "rock",
+   "title": "Rock",
+   "kind": "prop",
+   "tags": "rock boulder stone"
+  },
+  {
+   "id": "meteor",
+   "title": "Meteor",
+   "kind": "prop",
+   "tags": "meteor asteroid comet rock lava"
+  },
+  {
+   "id": "portal",
+   "title": "Portal",
+   "kind": "prop",
+   "tags": "portal gate ring rift"
+  },
+  {
+   "id": "totem",
+   "title": "Rune Totem",
+   "kind": "prop",
+   "tags": "totem rune stone monolith obelisk pillar"
+  }
+ ],
+ "generator": {
+  "want": [
+   {
+    "group": "frames",
+    "key": "rings",
+    "words": [
+     "ring",
+     "rings",
+     "orbit",
+     "orbits",
+     "planet",
+     "atom"
+    ]
+   },
+   {
+    "group": "frames",
+    "key": "wings",
+    "words": [
+     "wing",
+     "wings",
+     "angel",
+     "phoenix",
+     "feather",
+     "feathers"
+    ]
+   },
+   {
+    "group": "frames",
+    "key": "heart",
+    "words": [
+     "heart",
+     "love"
+    ]
+   },
+   {
+    "group": "frames",
+    "key": "halo",
+    "words": [
+     "halo",
+     "halos",
+     "crown"
+    ]
+   },
+   {
+    "group": "frames",
+    "key": "circle",
+    "words": [
+     "circle",
+     "rune",
+     "runes",
+     "sigil",
+     "summon"
+    ]
+   },
+   {
+    "group": "energy",
+    "key": "shafts",
+    "words": [
+     "shaft",
+     "shafts",
+     "beam",
+     "beams",
+     "god rays",
+     "pillar",
+     "heaven",
+     "holy"
+    ]
+   },
+   {
+    "group": "energy",
+    "key": "rays",
+    "words": [
+     "ray",
+     "rays",
+     "radiant",
+     "shine",
+     "sun"
+    ]
+   },
+   {
+    "group": "energy",
+    "key": "lightning",
+    "words": [
+     "lightning",
+     "electric",
+     "thunder",
+     "arc",
+     "arcs",
+     "spark",
+     "sparks"
+    ]
+   },
+   {
+    "group": "energy",
+    "key": "swirl",
+    "words": [
+     "swirl",
+     "vortex",
+     "spin",
+     "whirl"
+    ]
+   },
+   {
+    "group": "atmos",
+    "key": "nebula",
+    "words": [
+     "nebula",
+     "galaxy",
+     "cosmic",
+     "space",
+     "cloud",
+     "clouds",
+     "astral"
+    ]
+   },
+   {
+    "group": "atmos",
+    "key": "stars",
+    "words": [
+     "star",
+     "stars",
+     "galaxy",
+     "space",
+     "cosmic",
+     "sparkle",
+     "sparkles",
+     "twinkle"
+    ]
+   },
+   {
+    "group": "atmos",
+    "key": "flakes",
+    "words": [
+     "flake",
+     "flakes",
+     "square",
+     "squares",
+     "confetti",
+     "shards",
+     "particles"
+    ]
+   },
+   {
+    "group": "atmos",
+    "key": "petals",
+    "words": [
+     "petal",
+     "petals",
+     "sakura",
+     "blossom",
+     "flower",
+     "flowers"
+    ]
+   },
+   {
+    "group": "atmos",
+    "key": "leaves",
+    "words": [
+     "leaf",
+     "leaves",
+     "bush",
+     "forest",
+     "nature",
+     "grass"
+    ]
+   },
+   {
+    "group": "atmos",
+    "key": "smoke",
+    "words": [
+     "smoke",
+     "dark",
+     "shadow",
+     "fog",
+     "mist"
+    ]
+   },
+   {
+    "group": "atmos",
+    "key": "embers",
+    "words": [
+     "ember",
+     "embers",
+     "fire",
+     "ash"
+    ]
+   }
+  ],
+  "themes": [
+   {
+    "palette": "golden",
+    "words": [
+     "gold",
+     "golden",
+     "holy",
+     "divine",
+     "angel",
+     "heaven",
+     "sun"
+    ]
+   },
+   {
+    "palette": "galaxy",
+    "words": [
+     "galaxy",
+     "cosmic",
+     "space",
+     "nebula",
+     "star",
+     "astral",
+     "celestial",
+     "purple",
+     "violet"
+    ]
+   },
+   {
+    "palette": "emerald",
+    "words": [
+     "green",
+     "emerald",
+     "nature",
+     "forest",
+     "leaf",
+     "leaves",
+     "jade",
+     "toxic"
+    ]
+   },
+   {
+    "palette": "abyss",
+    "words": [
+     "blue",
+     "ocean",
+     "abyss",
+     "water",
+     "ice",
+     "frost",
+     "cyan"
+    ]
+   },
+   {
+    "palette": "crimson",
+    "words": [
+     "red",
+     "crimson",
+     "blood",
+     "fire",
+     "hell",
+     "demon"
+    ]
+   },
+   {
+    "palette": "mono",
+    "words": [
+     "white",
+     "mono",
+     "monochrome",
+     "opus",
+     "silver",
+     "chromatic",
+     "prism"
+    ]
+   }
+  ]
+ }
+}

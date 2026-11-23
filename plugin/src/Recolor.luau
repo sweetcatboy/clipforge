@@ -139,9 +139,9 @@ function Recolor.apply(spec: any, target: Palette?, strength: number?)
 		return spec
 	end
 	local colors = {}
-	for _, v in spec.palette or {} do
+	for name, v in spec.palette or {} do
 		local c = asColor(v)
-		if c then
+		if c and string.sub(tostring(name), 1, 4) ~= "keep" then
 			table.insert(colors, c)
 		end
 	end
@@ -150,7 +150,8 @@ function Recolor.apply(spec: any, target: Palette?, strength: number?)
 	if spec.palette then
 		for name, v in spec.palette do
 			local c = asColor(v)
-			if c then
+			-- palette entries named keep* stay as authored (multicolour textures such as chromatic fringes use them)
+			if c and string.sub(tostring(name), 1, 4) ~= "keep" then
 				spec.palette[name] = colorToHex(map(c))
 			end
 		end

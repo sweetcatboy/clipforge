@@ -43,11 +43,79 @@ TOOLS = [
     },
     {
         "name": "clipforge_vfx_from_prompt",
-        "description": "Make a professional Roblox VFX effect from a description, e.g. 'huge purple lightning "
-                       "slash', 'small holy heal burst', 'fast red fireball that explodes'. Studio builds it.",
+        "description": "Make a professional Roblox VFX effect from a description, picked from a 100-effect library "
+                       "(slashes, impacts, elements, magic, movement, game feel such as coin bursts, egg hatches and "
+                       "loot beams, ambient loops) and recoloured to the words: 'huge purple lightning slash', 'small "
+                       "holy heal', 'fast red fireball that explodes', 'ice slam', 'chain lightning', 'level up', "
+                       "'falling leaves'. Studio builds it.",
         "inputSchema": {
             "type": "object",
             "properties": {"prompt": {"type": "string"}, "name": {"type": "string"}},
+            "required": ["prompt"],
+        },
+    },
+    {
+        "name": "clipforge_generate_vfx",
+        "description": "Generate a showcase-grade composed VFX from a description: a hero shape (glowing cube, "
+                       "wireframe cube, crystal, orb) with frames (orbit rings, wings, heart, halo, rune circle), "
+                       "energy (light shafts, rays, lightning arcs, swirl) and atmosphere (nebula, stars, floating "
+                       "squares, petals, leaves, smoke, embers), or an impact or a black-hole vortex, with "
+                       "optional chromatic RGB-split fringes. E.g. 'golden glowing cube with light wings', 'galaxy "
+                       "wireframe cube with orbit rings', 'blue black hole with floating rocks', 'white chromatic "
+                       "impact'. Studio builds and saves it as an effect.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt": {"type": "string"},
+                "mode": {"type": "string", "enum": ["auto", "showcase", "impact", "vortex"], "default": "auto"},
+                "chromatic": {"type": "boolean", "description": "Force rainbow fringes on/off (default: from words)"},
+                "seed": {"type": "integer", "description": "Another variation of the same idea", "default": 1},
+                "name": {"type": "string"},
+            },
+            "required": ["prompt"],
+        },
+    },
+    {
+        "name": "clipforge_make_cutscene",
+        "description": "Make a Roblox cutscene (camera shots, letterbox, dialogue, titles, VFX, shake, fades). From a "
+                       "prompt it uses a template (boss intro, victory, dramatic reveal, ability showcase, map "
+                       "flyover, dialogue, defeat); quoted text becomes dialogue: 'boss intro \"You dare challenge "
+                       "me?\"'. From a video link it copies the clip's cuts and camera moves (push in, orbit, tilt, "
+                       "locked off), shot sizes, shake, flashes and fades onto your character. Shots film the "
+                       "actor named `who` (default Target): play with "
+                       "require(ReplicatedStorage.ClipForge.Cutscene).play(name, {actors = {Target = model}}).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt": {"type": "string", "description": "What happens; quoted text becomes lines"},
+                "source": {"type": "string", "description": "Optional video link/file to copy the camera work from"},
+                "who": {"type": "string", "default": "Target"},
+                "template": {"type": "string", "enum": ["intro", "victory", "reveal", "ability", "flyover",
+                                                        "dialogue", "defeat"]},
+                "title": {"type": "string"},
+                "effect": {"type": "string", "description": "Library effect id to fire (e.g. shockwave)"},
+                "start": {"type": "number"}, "end": {"type": "number"},
+                "name": {"type": "string"},
+                "timeout": {"type": "number", "default": 240},
+            },
+        },
+    },
+    {
+        "name": "clipforge_make_model",
+        "description": "Make a Roblox weapon or prop model from a description: sword, katana, greatsword, dagger, "
+                       "axe, spear, staff, wand, scythe, hammer, shield, magic orb, crystal cluster, rock, meteor, "
+                       "portal, rune totem; styles steel, dark, gold, crystal, energy, wood; optional glow colour. "
+                       "E.g. 'glowing purple katana', 'golden greatsword', 'crystal staff'. Studio builds it in "
+                       "the workspace, ready to attach to a rig or turn into a Tool.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt": {"type": "string"},
+                "style": {"type": "string", "enum": ["steel", "dark", "gold", "crystal", "energy", "wood"]},
+                "glow": {"type": "string", "description": "#RRGGBB"},
+                "scale": {"type": "number"},
+                "name": {"type": "string"},
+            },
             "required": ["prompt"],
         },
     },
@@ -64,7 +132,8 @@ TOOLS = [
     },
     {
         "name": "clipforge_presets",
-        "description": "The base VFX recipes ClipForge builds effects from.",
+        "description": "Everything ClipForge can build: library effects (id, title, category), generator options, "
+                       "cutscene templates and model types.",
         "inputSchema": {"type": "object", "properties": {}},
     },
 ]
@@ -98,7 +167,7 @@ class HttpBackend:
         return self._req("GET", f"/api/jobs?limit={limit}")["jobs"]
 
     def presets(self):
-        return self._req("GET", "/api/presets")["presets"]
+        return self._req("GET", "/api/catalog")
 
 
 class LocalBackend:
@@ -118,8 +187,8 @@ class LocalBackend:
         return self.store.list(limit=limit)
 
     def presets(self):
-        from .server import presets
-        return presets()
+        from .catalog import summary
+        return summary()
 
 
 def _backend():
@@ -144,10 +213,16 @@ def _backend():
 def _summary(job):
     out = {k: job.get(k) for k in ("id", "status", "progress", "message", "error", "name", "kind", "summary",
                                    "delivered")}
+    if job.get("buildError") and not job.get("delivered"):
+        out["buildError"] = job["buildError"]
+        out["next"] = ("Studio could not build it: " + job["buildError"] + ". Update the ClipForge plugin, then press "
+                       "Build here on the job in the plugin's Bots tab.")
+        return out
     if job.get("status") == "done":
         out["next"] = ("Built in Roblox Studio." if job.get("delivered") else
                        "Ready: Roblox Studio builds it when the ClipForge plugin's Bot Link is on "
-                       "(ServerStorage.ClipForge for animations, ReplicatedStorage.ClipForge.Effects for VFX).")
+                       "(ServerStorage.ClipForge.Animations for animations, ReplicatedStorage.ClipForge.Effects for "
+                       "VFX, ReplicatedStorage.ClipForge.Cutscenes for cutscenes, the workspace for models).")
     return out
 
 
@@ -161,6 +236,25 @@ def _call(backend, name, args):
         return _summary(job)
     if name == "clipforge_vfx_from_prompt":
         job = backend.create({"prompt": args["prompt"], "kind": "vfx", "name": args.get("name"), "client": "mcp"})
+        return _summary(backend.get(job["id"], wait=30))
+    if name == "clipforge_generate_vfx":
+        opts = {k: args[k] for k in ("seed", "chromatic") if k in args}
+        if args.get("mode") and args["mode"] != "auto":
+            opts["mode"] = args["mode"]
+        job = backend.create({"prompt": args["prompt"], "kind": "generate", "name": args.get("name"),
+                              "options": opts, "client": "mcp"})
+        return _summary(backend.get(job["id"], wait=30))
+    if name == "clipforge_make_cutscene":
+        if not args.get("prompt") and not args.get("source"):
+            raise ValueError("Give a prompt (what happens) or a source video to copy the camera work from.")
+        opts = {k: args[k] for k in ("who", "template", "title", "effect", "start", "end") if args.get(k) is not None}
+        job = backend.create({"prompt": args.get("prompt"), "source": args.get("source"), "kind": "cutscene",
+                              "name": args.get("name"), "options": opts, "client": "mcp"})
+        return _summary(backend.get(job["id"], wait=float(args.get("timeout", 240)) if args.get("source") else 30))
+    if name == "clipforge_make_model":
+        opts = {k: args[k] for k in ("style", "glow", "scale") if args.get(k) is not None}
+        job = backend.create({"prompt": args["prompt"], "kind": "model", "name": args.get("name"), "options": opts,
+                              "client": "mcp"})
         return _summary(backend.get(job["id"], wait=30))
     if name == "clipforge_job_status":
         return _summary(backend.get(args["id"], wait=float(args.get("wait") or 0)))
@@ -193,8 +287,9 @@ def run():
                 result = {"protocolVersion": params.get("protocolVersion") or PROTOCOL,
                           "capabilities": {"tools": {"listChanged": False}},
                           "serverInfo": {"name": "clipforge", "version": config.VERSION},
-                          "instructions": "Make Roblox animations and VFX from social-media videos or prompts. "
-                                          "Studio builds results via the ClipForge plugin's Bot Link."}
+                          "instructions": "Make Roblox animations, VFX, generated showcase VFX, cutscenes and "
+                                          "weapon/prop models from social-media videos or prompts. Studio builds "
+                                          "results via the ClipForge plugin's Bot Link."}
             elif method == "tools/list":
                 result = {"tools": TOOLS}
             elif method == "tools/call":

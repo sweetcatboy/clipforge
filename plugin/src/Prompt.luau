@@ -1,5 +1,7 @@
 -- ClipForge Prompt: "huge purple lightning slash" -> effect config, offline (same rules as the bot server).
 
+local Library = require(script.Parent.Library)
+
 local Prompt = {}
 
 local KEYWORDS = {
@@ -15,7 +17,24 @@ local KEYWORDS = {
 	darkportal = { "dark", "void", "portal", "shadow", "black hole", "rift", "abyss", "curse", "domain", "demon" },
 	misc = { "holy", "light", "heal", "divine", "angel", "bless", "sparkle", "star", "teleport", "magic" },
 }
+local ORDER = { "slash", "impact", "explosion", "aura", "beam", "lightning", "projectile", "fire", "icewater", "darkportal", "misc" }
 local CORE_KINDS = { "slash", "beam", "projectile", "impact", "explosion", "aura", "lightning" }
+-- element words recolour an effect that is not already that element ("ice slam", "fire tornado", "lightning slash");
+-- `native` words mark effects that already are ("explosion" is fire, "frost burst" is ice)
+local ELEMENTS = {
+	{ words = { "ice", "frost", "frozen", "freeze", "cryo", "snow", "glacier" }, native = { "cold", "crystal", "snowfall" },
+		colors = { "#5CC8FF", "#BDEBFF" } },
+	{ words = { "fire", "flame", "flaming", "inferno", "lava", "magma", "burning", "blaze" },
+		native = { "fireball", "explosion", "eruption", "flamethrower", "campfire", "bonfire", "torch", "embers", "volcano", "meteor" },
+		colors = { "#FF6418", "#FFB238" } },
+	{ words = { "electric", "lightning", "thunder", "shock", "plasma", "volt" }, native = { "zap", "bolt", "crackle" },
+		colors = { "#6FB6FF", "#B98CFF" } },
+	{ words = { "holy", "divine", "angel", "heaven", "celestial" }, native = { "radiant", "bless", "judgment" },
+		colors = { "#FFC530", "#FFF0A8" } },
+	{ words = { "water", "aqua", "ocean", "tidal" }, native = { "splash", "liquid", "rain" }, colors = { "#2AD8FF", "#5CC8FF" } },
+	{ words = { "nature", "leaf", "leaves", "forest", "plant" }, native = { "fireflies" }, colors = { "#2EE85A", "#9BFF2E" } },
+	{ words = { "wind", "air" }, native = { "gust", "tornado", "cyclone", "breeze", "whirlwind" }, colors = { "#CFEFFF", "#FFFFFF" } },
+}
 
 Prompt.COLORS = {
 	red = "#FF2A2A", crimson = "#DC143C", blood = "#B0001E", orange = "#FF7A1A", amber = "#FFB000",
@@ -61,18 +80,17 @@ end
 
 function Prompt.parse(prompt: string)
 	local text = " " .. string.lower(prompt or "") .. " "
+	-- the broad kind the words point at
 	local scores = {}
 	local best, bestScore = "impact", 0
-	for kind, words in KEYWORDS do
+	for _, kind in ORDER do
 		local s = 0
-		for _, w in words do
+		for _, w in KEYWORDS[kind] do
 			if has(text, w) then
 				s += if #w > 4 then 2 else 1
 			end
 		end
 		scores[kind] = s
-	end
-	for kind, s in scores do
 		if s > bestScore then
 			best, bestScore = kind, s
 		end
@@ -88,11 +106,17 @@ function Prompt.parse(prompt: string)
 			end
 		end
 	end
-	-- colours in the order they appear
+	-- a specific library effect ("heal", "tornado", "meteor strike", "level up") beats the broad kind
+	local entry, libScore = Library.match(prompt, best)
+	local useLib = entry ~= nil and libScore >= 2
+	local own = if useLib then Library.words(entry) else {}
+	local base = if useLib then entry.id else best
+
+	-- colours in the order they appear ("poison cloud" / "black hole" name the effect's own colours: keep them)
 	local found = {}
 	for name, hx in Prompt.COLORS do
 		local at = string.find(text, "%f[%a]" .. name .. "%f[%A]")
-		if at then
+		if at and not own[name] then
 			table.insert(found, { at = at, hex = hx })
 		end
 	end
@@ -103,8 +127,39 @@ function Prompt.parse(prompt: string)
 	local palette = nil
 	if #found > 0 then
 		palette = Prompt.paletteFrom(found[1].hex, found[2] and found[2].hex, dark)
-	elseif dark and best ~= "darkportal" then
+	elseif dark and best ~= "darkportal" and not (own.dark or own.void or own.shadow) then
 		palette = Prompt.paletteFrom("#8A2BFF", "#FF2F9E", true)
+	elseif useLib then
+		-- another element asked of this effect recolours it; its own element keeps the designed colours
+		local hits = {}
+		for _, el in ELEMENTS do
+			local first = nil
+			for _, w in el.words do
+				local at = string.find(text, "%f[%a]" .. w .. "%f[%A]")
+				if at and (first == nil or at < first) then
+					first = at
+				end
+			end
+			if first then
+				table.insert(hits, { at = first, el = el })
+			end
+		end
+		table.sort(hits, function(a, b)
+			return a.at < b.at
+		end)
+		for _, h in hits do
+			local native = false
+			for _, w in h.el.words do
+				native = native or own[w] == true
+			end
+			for _, w in h.el.native do
+				native = native or own[w] == true
+			end
+			if not native then
+				palette = Prompt.paletteFrom(h.el.colors[1], h.el.colors[2], dark)
+				break
+			end
+		end
 	end
 	local scale = 1
 	for _, pair in { { "tiny", 0.6 }, { "small", 0.75 }, { "little", 0.8 }, { "big", 1.35 }, { "large", 1.35 },
@@ -119,11 +174,24 @@ function Prompt.parse(prompt: string)
 			speed = pair[2]
 		end
 	end
-	local parts = { { base = best, t = 0 } }
-	if (best == "slash" or best == "projectile" or best == "beam")
-		and string.find(text, "%f[%a]and%f[%A].*") and (has(text, "explo") or has(text, "boom") or has(text, "impact") or has(text, "slam"))
-		or ((best == "slash" or best == "projectile" or best == "beam") and has(text, "that explode")) then
-		local follow = if has(text, "explo") or has(text, "boom") then "explosion" else "impact"
+	local parts = { { base = base, t = 0 } }
+	-- "...and/then/into/with/that explodes": a slash, shot or beam followed by an explosion or impact
+	local function followUp()
+		for _, c in { "and", "then", "into", "with", "that" } do
+			local at = string.find(text, "%f[%a]" .. c .. "%f[%A]")
+			if at then
+				local rest = string.sub(text, at)
+				for _, w in { "explo", "boom", "blast", "impact", "slam" } do
+					if string.find(rest, "%f[%a]" .. w) then
+						return true
+					end
+				end
+			end
+		end
+		return false
+	end
+	if (best == "slash" or best == "projectile" or best == "beam") and followUp() then
+		local follow = if has(text, "explo") or has(text, "boom") or has(text, "blast") then "explosion" else "impact"
 		table.insert(parts, { base = follow, t = if best == "slash" then 0.25 else 0.4, at = { 0, 0, -6 }, scale = 0.9 })
 	end
 	local words = {}
@@ -137,16 +205,17 @@ function Prompt.parse(prompt: string)
 		end
 	end
 	return {
-		name = if #words > 0 then table.concat(words) else best,
-		base = best,
+		name = if #words > 0 then table.concat(words) else base,
+		base = base,
 		palette = palette,
 		scale = scale,
 		speed = speed,
 		intensity = 1,
-		roll = if best == "slash" then -25 else 0,
+		roll = if base == "slash" then -25 else 0,
 		yaw = 0,
 		parts = parts,
 		prompt = prompt,
+		shake = if useLib then entry.shake else nil,
 	}
 end
 

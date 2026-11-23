@@ -7,11 +7,12 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 local HttpService = game:GetService("HttpService")
+local MOTION_CHUNK = 190000 -- characters per motion-data part (a script's Source is capped at 200,000)
 
 local Installer = {}
 local pluginRoot = script.Parent
 
-local RUNTIME = { "VFXTimeline", "Recolor", "FX" }
+local RUNTIME = { "VFXTimeline", "Recolor", "Blocks", "Library", "Generator", "FX", "Cutscene", "Abilities" }
 
 local function folder(parent: Instance, name: string): Folder
 	local f = parent:FindFirstChild(name)
@@ -168,6 +169,8 @@ function Installer.saveEffect(config, overwrite: boolean?): ModuleScript
 		yaw = config.yaw,
 		parts = config.parts,
 		prompt = config.prompt,
+		generate = config.generate,
+		shake = config.shake,
 	}
 	local name = string.gsub(config.name or "Effect", "[^%w_]", "")
 	local existing = effects:FindFirstChild(name)
@@ -204,7 +207,20 @@ function Installer.saveAnimation(kfs: KeyframeSequence, data, rig: Model?): Keyf
 	local holder = Instance.new("ModuleScript")
 	holder.Name = kfs.Name
 	local json = HttpService:JSONEncode(data)
-	holder.Source = "-- ClipForge motion data (JSON). Used by the plugin to re-bake this animation.\nreturn [==[" .. json .. "]==]\n"
+	-- a script's Source holds at most 200,000 characters: a long clip's motion is split over Part1, Part2... children
+	if #json <= MOTION_CHUNK then
+		holder.Source = "-- ClipForge motion data (JSON). Used by the plugin to re-bake this animation.\nreturn [==[" .. json .. "]==]\n"
+	else
+		local count = math.ceil(#json / MOTION_CHUNK)
+		holder.Source = "-- ClipForge motion data (JSON in " .. count .. " parts, the Part children). Used by the plugin to re-bake this animation.\n"
+			.. "local parts = {}\nfor i = 1, " .. count .. " do\n\tparts[i] = require(script:FindFirstChild(\"Part\" .. i))\nend\nreturn table.concat(parts)\n"
+		for i = 1, count do
+			local part = Instance.new("ModuleScript")
+			part.Name = "Part" .. i
+			part.Source = "return [==[" .. string.sub(json, (i - 1) * MOTION_CHUNK + 1, i * MOTION_CHUNK) .. "]==]\n"
+			part.Parent = holder
+		end
+	end
 	holder.Parent = md
 	if rig then
 		Installer.sendToAnimationEditor(kfs, rig)
@@ -241,11 +257,54 @@ function Installer.motionData(name: string)
 		return nil
 	end
 	local json = string.match((holder :: any).Source, "%[==%[(.*)%]==%]")
+	if not json and holder:FindFirstChild("Part1") then -- a long clip, saved in parts
+		local pieces, i = {}, 1
+		local part = holder:FindFirstChild("Part1")
+		while part do
+			table.insert(pieces, string.match((part :: any).Source, "%[==%[(.*)%]==%]") or "")
+			i += 1
+			part = holder:FindFirstChild("Part" .. i)
+		end
+		json = table.concat(pieces)
+	end
 	if not json then
 		return nil
 	end
 	local ok, data = pcall(HttpService.JSONDecode, HttpService, json)
 	return if ok then data else nil
+end
+
+local function saveData(folderName: string, config, header: string)
+	local rs = Installer.ensureRuntime()
+	local f = folder(rs, folderName)
+	local name = uniqueName(f, config.name or folderName)
+	config.name = name
+	local m = Instance.new("ModuleScript")
+	m.Name = name
+	m.Source = header .. "return " .. serialize(config, "") .. "\n"
+	m:SetAttribute("ClipForge", true)
+	m.Parent = f
+	return m
+end
+
+-- ReplicatedStorage.ClipForge.Cutscenes.<Name>
+function Installer.saveCutscene(config)
+	return saveData("Cutscenes", config, "-- ClipForge cutscene. Play (LocalScript): require(game.ReplicatedStorage.ClipForge.Cutscene).play(script.Name, { actors = {...} })\n")
+end
+
+-- ReplicatedStorage.ClipForge.Abilities.<Name> (animation + effects in sync)
+function Installer.saveAbility(config)
+	return saveData("Abilities", config, "-- ClipForge ability. Publish the animation, put its id in `animation`, then (LocalScript):\n-- require(game.ReplicatedStorage.ClipForge.Abilities).play(script.Name, character)\n")
+end
+
+-- ReplicatedStorage.ClipForge.Models.<Name>
+function Installer.saveModel(model: Model)
+	local rs = Installer.ensureRuntime()
+	local f = folder(rs, "Models")
+	local copy = model:Clone()
+	copy.Name = uniqueName(f, model.Name)
+	copy.Parent = f
+	return copy
 end
 
 return Installer

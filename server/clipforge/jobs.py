@@ -1,5 +1,9 @@
-"""Job queue: bots and the Studio plugin submit jobs, a worker turns clips into animation/VFX data, the plugin
-builds finished jobs in Studio and marks them delivered."""
+"""Job queue: bots and the Studio plugin submit jobs, a worker turns clips and prompts into animation, VFX, cutscene
+and model data, the plugin builds finished jobs in Studio and marks them delivered.
+
+Kinds: animation / vfx / both (from a clip; vfx also from a prompt), generate (a showcase VFX from a description),
+cutscene (from a clip's cuts and camera moves, or from a prompt via the plugin's templates), model (a weapon or prop
+from a description)."""
 from __future__ import annotations
 
 import json
@@ -14,7 +18,9 @@ import uuid
 
 from . import config
 
-KINDS = ("animation", "vfx", "both")
+KINDS = ("animation", "vfx", "both", "generate", "cutscene", "model")
+NEEDS_PROMPT = ("generate", "model")
+NEEDS_SOURCE = ("animation", "both")
 STATUS_ACTIVE = ("queued", "downloading", "tracking", "analyzing", "building")
 
 
@@ -33,7 +39,7 @@ def _safe_name(s: str, fallback: str) -> str:
 class Job:
     FIELDS = ("id", "seq", "kind", "source", "prompt", "options", "client", "name", "status", "progress", "message",
               "error", "created", "updated", "delivered", "deliveredInfo", "meta", "hasResult", "summary",
-              "claimedBy", "claimedAt")
+              "claimedBy", "claimedAt", "buildError")
 
     def __init__(self, **kw):
         for f in self.FIELDS:
@@ -56,6 +62,7 @@ class JobStore:
         self.seq = 0
         self.q: queue.Queue[str] = queue.Queue()
         self.changed = threading.Condition(self.lock)
+        self.releases: dict[str, list[float]] = {}  # job id -> times a Studio gave it back unbuilt
         self._load()
         for i in range(max(1, workers)):
             threading.Thread(target=self._worker, name=f"clipforge-worker-{i}", daemon=True).start()
@@ -98,9 +105,11 @@ class JobStore:
         source = (payload.get("source") or payload.get("url") or "").strip()
         prompt = (payload.get("prompt") or "").strip()
         if not source and not prompt:
-            raise ValueError("Give a video link/file in 'source' or describe an effect in 'prompt'.")
-        if not source and kind != "vfx":
-            raise ValueError("Animations need a video 'source' (a prompt can only make VFX).")
+            raise ValueError("Give a video link/file in 'source' or describe what to make in 'prompt'.")
+        if not source and kind in NEEDS_SOURCE:
+            raise ValueError("Animations need a video 'source' (prompts make VFX, generated VFX, cutscenes and models).")
+        if not prompt and kind in NEEDS_PROMPT:
+            raise ValueError(f"'{kind}' jobs need a 'prompt' describing what to make.")
         with self.lock:
             self.seq += 1
             job = Job(id=uuid.uuid4().hex[:10], seq=self.seq, kind=kind, source=source or None, prompt=prompt or None,
@@ -149,28 +158,44 @@ class JobStore:
                 return None
             job.delivered = True
             job.deliveredInfo = info or {}
+            job.buildError = None
             job.updated = _now()
             self._save(job)
             self.changed.notify_all()
             return job
 
-    def claim(self, job_id: str, studio: str, release: bool = False) -> tuple[bool, Job | None]:
-        """One Studio window builds each job: the first claim wins (claims expire after 90 s if never delivered)."""
+    def claim(self, job_id: str, studio: str, release: bool = False, error: str | None = None,
+              force: bool = False) -> tuple[bool, Job | None, str]:
+        """One Studio window builds each job: the first claim wins (claims expire after 90 s if never delivered).
+        A window that could not build it releases the claim with the error, which bots then see as buildError.
+        A job given back unbuilt 3 times in 2 minutes is paused, so a Studio that keeps failing (an older plugin
+        retries on every poll) stops hammering it; a person pressing Build here (force) can always retry."""
         with self.lock:
             job = self.jobs.get(job_id)
             if not job:
-                return False, None
+                return False, None, "No such job"
+            now = _now()
             if release:
                 job.claimedBy, job.claimedAt = None, None
+                if error:
+                    job.buildError = str(error)[:500]
+                self.releases.setdefault(job_id, []).append(now)
+                job.updated = now
                 self._save(job)
-                return True, job
-            fresh = job.claimedAt and _now() - job.claimedAt < 90
+                self.changed.notify_all()
+                return True, job, ""
+            recent = [t for t in self.releases.get(job_id, []) if now - t < 120]
+            self.releases[job_id] = recent
+            if len(recent) >= 3 and not force:
+                return False, job, ("Paused: Studio could not build this job 3 times in a row. Update the ClipForge "
+                                    "plugin, then press Build here on it.")
+            fresh = job.claimedAt and now - job.claimedAt < 90
             if job.delivered or (job.claimedBy and fresh and job.claimedBy != studio):
-                return False, job
-            job.claimedBy, job.claimedAt = studio or "studio", _now()
+                return False, job, "Already taken by " + str(job.claimedBy)
+            job.claimedBy, job.claimedAt = studio or "studio", now
             self._save(job)
             self.changed.notify_all()
-            return True, job
+            return True, job, ""
 
     def delete(self, job_id: str) -> bool:
         with self.lock:
@@ -233,6 +258,10 @@ class JobStore:
                              message=msg)
             return cb
 
+        if job.kind in ("generate", "model") or (job.kind == "cutscene" and not job.source):
+            self._run_prompt(job, result, opts)
+            return
+
         if not job.source:
             cfg = prompts.config_from_prompt(job.prompt, job.name or None)
             job.name = job.name or cfg["name"]
@@ -250,6 +279,21 @@ class JobStore:
         base_name = job.name or _safe_name(meta.get("title") or "", "Clip")
 
         warnings = []
+        if job.kind == "cutscene":
+            from . import catalog
+            from .cutscene_video import analyze_cutscene
+            spec = catalog.cutscene_from_prompt(job.prompt) if job.prompt else {}
+            cs = analyze_cutscene(clip, opts, stage("analyzing", 0.25, 0.97), who=opts.get("who") or "Target",
+                                  name=(job.name or base_name) + "Cutscene", lines=spec.get("lines"),
+                                  effect=opts.get("effect") or spec.get("effect"))
+            cs["source"] = meta
+            result["cutscene"] = cs
+            result["name"] = job.name = cs["name"]
+            a = cs["analysis"]
+            moves = sorted({sh["move"] for sh in a["shots"]})
+            self._finish(job, result, f"Made a {len(cs['shots'])}-shot cutscene ({', '.join(moves)}; "
+                                      f"{a['flashes']} flashes, {a['shakes']} shakes) from the clip")
+            return
         if job.kind in ("animation", "both"):
             from .motion import AnimOptions, build_animation
             from .pose import extract_pose
@@ -294,6 +338,47 @@ class JobStore:
             msg += " (" + "; ".join(warnings) + ")"
         self._finish(job, result, msg)
 
+    def _run_prompt(self, job: Job, result: dict, opts: dict):
+        """Prompt-only kinds: the description Studio will build, worked out here so the bot hears what it gets."""
+        from . import catalog
+
+        if job.kind == "generate":
+            d = catalog.generate_desc(job.prompt, seed=int(opts.get("seed") or 1), mode=opts.get("mode"),
+                                      chromatic=opts.get("chromatic"))
+            if opts.get("scale"):
+                d["scale"] = float(opts["scale"])
+            name = job.name or d["name"]
+            desc = catalog.describe_generate(d)
+            result["vfx"] = {"type": "vfx", "version": 1, "name": name, "generate": d, "description": "generated " + desc,
+                             "scale": 1.0, "speed": float(opts.get("speed") or 1.0), "intensity": 1.0,
+                             "prompt": job.prompt, "analysis": {"confidence": 1.0}}
+            message = f"Generated a {desc} VFX"
+        elif job.kind == "model":
+            m = catalog.model_from_prompt(job.prompt, job.name or None)
+            for k in ("type", "style", "glow", "scale"):
+                if opts.get(k) not in (None, ""):
+                    m[k] = opts[k]
+            if m["style"] not in ("steel", "dark", "gold", "crystal", "energy", "wood"):
+                raise ValueError(f"Unknown model style '{m['style']}' (steel, dark, gold, crystal, energy or wood)")
+            m["scale"] = float(min(max(float(m.get("scale") or 1), 0.3), 4))
+            if m["type"] not in {t["id"] for t in catalog.catalog()["models"]}:
+                raise ValueError(f"Unknown model type '{m['type']}'")
+            result["model"] = m
+            name = m["name"]
+            message = f"Made a {catalog.describe_model(m)} model"
+        else:  # cutscene from a prompt: one of the plugin's templates, with the lines and effect the prompt names
+            c = catalog.cutscene_from_prompt(job.prompt, who=opts.get("who") or "Target", name=job.name or None)
+            for k in ("template", "title", "sub", "effect"):
+                if opts.get(k):
+                    c[k] = opts[k]
+            result["cutscene"] = c
+            name = c["name"]
+            said = f", {len(c['lines'])} line{'s' if len(c['lines']) != 1 else ''}" if c["lines"] else ""
+            fx = f", {c['effect']} effect" if c.get("effect") else ""
+            message = f"Made a {c['templateTitle'].lower()} cutscene{said}{fx}"
+        result["name"] = job.name = name
+        self._finish(job, result, message)
+
     def _finish(self, job: Job, result: dict, message: str):
         d = self._dir(job.id)
         with open(os.path.join(d, "result.json"), "w", encoding="utf-8") as f:
@@ -306,6 +391,15 @@ class JobStore:
         if result.get("vfx"):
             v = result["vfx"]
             summary["vfx"] = {"name": v.get("name"), "base": v.get("base"), "archetype": v.get("archetype"),
-                              "palette": v.get("palette"), "confidence": v.get("analysis", {}).get("confidence"),
-                              "sheet": v.get("sheet")}
+                              "description": v.get("description"), "palette": v.get("palette"),
+                              "confidence": v.get("analysis", {}).get("confidence"), "sheet": v.get("sheet")}
+        if result.get("cutscene"):
+            c = result["cutscene"]
+            summary["cutscene"] = {"name": c.get("name"), "template": c.get("template"),
+                                   "shots": len(c["shots"]) if c.get("shots") else None,
+                                   "events": len(c["events"]) if c.get("events") else None,
+                                   "lines": c.get("lines"), "effect": c.get("effect")}
+        if result.get("model"):
+            m = result["model"]
+            summary["model"] = {k: m.get(k) for k in ("name", "type", "style", "glow", "scale")}
         self._update(job, status="done", progress=1.0, message=message, hasResult=True, summary=summary)

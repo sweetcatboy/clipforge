@@ -82,6 +82,7 @@ if __name__ == "__main__":
                          ("fast red fireball that explodes", "projectile"), ("dark void portal", "dark"),
                          ("ground slam with blue shockwave", "impact")]:
         c = config_from_prompt(prompt)
-        print(f"prompt {prompt!r:40} -> {c['archetype']:10} {c['palette']['primary']} scale {c['scale']} parts {[p['base'] for p in c['parts']]}")
+        colour = (c['palette'] or {}).get('primary', 'own colours')  # a library effect named outright keeps its design
+        print(f"prompt {prompt!r:40} -> {c['archetype']:10} {colour} scale {c['scale']} parts {[p['base'] for p in c['parts']]}")
         assert c["archetype"] == want, (prompt, c["archetype"])
     print("ALL VFX TESTS PASSED")

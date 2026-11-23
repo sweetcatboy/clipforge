@@ -4,6 +4,7 @@ from __future__ import annotations
 import colorsys
 import re
 
+from . import catalog
 from .vfx_analyze import ARCHETYPES, _from_hsv, _hex
 
 KEYWORDS = {
@@ -29,6 +30,25 @@ COLORS = {
     "pink": "#FF5EB8", "rose": "#FF4F8B", "sakura": "#FF9CCB", "white": "#F4F8FF", "silver": "#CFD8E6",
     "black": "#1A1024", "dark": "#2A1240", "rainbow": "#FF4FD8",
 }
+# element words recolour an effect that is not already that element ("ice slam", "fire tornado", "lightning slash");
+# `native` words mark effects that already are ("explosion" is fire, "frost burst" is ice)
+ELEMENTS = [
+    {"words": ["ice", "frost", "frozen", "freeze", "cryo", "snow", "glacier"], "native": ["cold", "crystal", "snowfall"],
+     "colors": ("#5CC8FF", "#BDEBFF")},
+    {"words": ["fire", "flame", "flaming", "inferno", "lava", "magma", "burning", "blaze"],
+     "native": ["fireball", "explosion", "eruption", "flamethrower", "campfire", "bonfire", "torch", "embers", "volcano",
+                "meteor"], "colors": ("#FF6418", "#FFB238")},
+    {"words": ["electric", "lightning", "thunder", "shock", "plasma", "volt"], "native": ["zap", "bolt", "crackle"],
+     "colors": ("#6FB6FF", "#B98CFF")},
+    {"words": ["holy", "divine", "angel", "heaven", "celestial"], "native": ["radiant", "bless", "judgment"],
+     "colors": ("#FFC530", "#FFF0A8")},
+    {"words": ["water", "aqua", "ocean", "tidal"], "native": ["splash", "liquid", "rain"],
+     "colors": ("#2AD8FF", "#5CC8FF")},
+    {"words": ["nature", "leaf", "leaves", "forest", "plant"], "native": ["fireflies"], "colors": ("#2EE85A", "#9BFF2E")},
+    {"words": ["wind", "air"], "native": ["gust", "tornado", "cyclone", "breeze", "whirlwind"],
+     "colors": ("#CFEFFF", "#FFFFFF")},
+]
+
 THEMES = {  # archetype -> default palette when the prompt names no colour
     "slash": ("#FFFFFF", "#7FD6FF", "#C9F0FF", "#0E2A55"),
     "impact": ("#FFF6E6", "#FF7A2E", "#FFB15C", "#3A1606"),
@@ -78,17 +98,35 @@ def config_from_prompt(prompt: str, name: str | None = None) -> dict:
             archetype = primary_kind
             break
 
+    # a specific effect from the plugin's library ("heal", "tornado", "meteor", "level up"...) beats a broad archetype
+    entry, lib_score = catalog.match_effect(prompt, prefer=ARCHETYPES[archetype][0])
+    use_lib = entry is not None and lib_score >= 2
+
     found = [(text.find(" " + c), c) for c in COLORS if re.search(r"\b" + re.escape(c) + r"\b", text)]
     found = [c for _, c in sorted(found)]
     dark = "dark" in text or "black" in text or "void" in text
     colours = [c for c in found if c not in ("dark",)]
+    if use_lib:  # "poison cloud", "black hole", "golden ..." name the effect's own colours: keep its design
+        colours = [c for c in colours if c not in catalog.effect_words(entry)]
     if colours:
         palette = palette_from(COLORS[colours[0]], COLORS[colours[1]] if len(colours) > 1 else None, dark)
+    elif dark and archetype != "dark" and not (use_lib and catalog.effect_words(entry) & {"dark", "void", "shadow"}):
+        palette = palette_from("#8A2BFF", "#FF2F9E", True)
+    elif use_lib:
+        palette = None  # keep the library effect's own designed colours...
+        own = catalog.effect_words(entry)
+        hits = []
+        for el in ELEMENTS:
+            at = [m.start() for w in el["words"] for m in [re.search(r"(?<![a-z])" + w + r"(?![a-z])", text)] if m]
+            if at:
+                hits.append((min(at), el))
+        for _, el in sorted(hits, key=lambda h: h[0]):
+            if not own & set(el["words"] + el["native"]):  # ...unless it is asked for in another element
+                palette = palette_from(el["colors"][0], el["colors"][1], dark)
+                break
     else:
         core, primary, secondary, deep = THEMES[archetype]
         palette = {"core": core, "primary": primary, "secondary": secondary, "deep": deep}
-        if dark and archetype != "dark":
-            palette = palette_from("#8A2BFF", "#FF2F9E", True)
 
     scale = 1.0
     for w, s in (("tiny", 0.6), ("small", 0.75), ("little", 0.8), ("big", 1.35), ("large", 1.35),
@@ -101,6 +139,8 @@ def config_from_prompt(prompt: str, name: str | None = None) -> dict:
         if re.search(r"\b" + re.escape(w) + r"\b", text):
             speed = s
     base, _, desc = ARCHETYPES[archetype]
+    if use_lib:
+        base, desc = entry["id"], entry["title"].lower() + (" loop" if entry["ambient"] else "")
     parts = [{"base": base, "t": 0.0, "at": [0, 0, 0], "scale": 1.0}]
     if archetype in ("slash", "projectile", "beam") and re.search(r"\b(and|then|into|with|that)\b.*\b(explo|boom|blast|impact|slam)", text):
         follow = "explosion" if re.search(r"explo|boom|blast", text) else "impact"
@@ -116,11 +156,12 @@ def config_from_prompt(prompt: str, name: str | None = None) -> dict:
         "scale": scale,
         "speed": speed,
         "intensity": 1.0,
-        "roll": -25.0 if archetype == "slash" else 0.0,
+        "roll": -25.0 if base == "slash" else 0.0,
         "yaw": 0.0,
         "parts": parts,
         "prompt": prompt,
-        "analysis": {"confidence": 1.0 if any(scores.values()) else 0.3, "scores": scores},
+        "analysis": {"confidence": 1.0 if (any(scores.values()) or use_lib) else 0.3, "scores": scores,
+                     "library": {"id": entry["id"], "score": lib_score} if use_lib else None},
     }
 
 
